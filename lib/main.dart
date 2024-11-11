@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:smart_mauzo/services/supabase_service.dart';
 import 'screens/scan_screen.dart';
 import 'screens/sales_screen.dart';
 import 'screens/profile_screen.dart';
 
-void main() {
+void main() async {
+  // Added async here
+  WidgetsFlutterBinding.ensureInitialized();
+  // Initialize Supabase
+  final supabaseService = SupabaseService();
+  await supabaseService.initialize();
   runApp(const MyApp());
 }
 
@@ -28,7 +34,7 @@ class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
   @override
-  _MainScreenState createState() => _MainScreenState();
+  State<MainScreen> createState() => _MainScreenState(); // Fixed syntax
 }
 
 class _MainScreenState extends State<MainScreen> {
@@ -43,7 +49,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_currentIndex],
+      body: _screens[_currentIndex], // Fixed variable name
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {

@@ -19,12 +19,22 @@ class _ScanScreenState extends State<ScanScreen> {
   bool _isOnline = true;
   bool _isLoading = false;
 
+  late Future<SupabaseService> _supabaseServiceFuture;
+
   @override
   void initState() {
     super.initState();
+    _supabaseServiceFuture = _initializeServices();
     _checkConnectivity();
     _setupConnectivityListener();
     _searchController.addListener(_onSearchChanged);
+  }
+
+  Future<SupabaseService> _initializeServices() async {
+    if (!_supabaseService.isInitialized) {
+      await _supabaseService.initialize();
+    }
+    return _supabaseService; // Return the initialized service
   }
 
   @override
@@ -75,15 +85,19 @@ class _ScanScreenState extends State<ScanScreen> {
 
     try {
       final products = await _supabaseService.searchProducts(query);
-      setState(() {
-        _searchResults = products;
-      });
+      if (mounted) {
+        setState(() {
+          _searchResults = products;
+        });
+      }
     } catch (e) {
       _showError('Error searching products: $e');
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -122,10 +136,14 @@ class _ScanScreenState extends State<ScanScreen> {
         });
 
         try {
-          final product = await _supabaseService.getProductByBarcode(barcode);
-          setState(() {
-            _currentProduct = product;
-          });
+          final supabaseService = await _supabaseServiceFuture;
+          final product = await supabaseService.getProductByBarcode(barcode);
+
+          if (mounted) {
+            setState(() {
+              _currentProduct = product;
+            });
+          }
 
           if (product == null) {
             _showError('Product not found');
@@ -133,9 +151,11 @@ class _ScanScreenState extends State<ScanScreen> {
         } catch (e) {
           _showError('Error fetching product: $e');
         } finally {
-          setState(() {
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+          }
         }
       }
     } catch (e) {
@@ -151,31 +171,37 @@ class _ScanScreenState extends State<ScanScreen> {
     });
 
     try {
+      final supabaseService = await _supabaseServiceFuture;
+
       // Update product quantity
       final updatedProduct = _currentProduct!;
       updatedProduct.stockQuantity--;
 
       // Record the sale
-      await _supabaseService.recordSale(
+      await supabaseService.recordSale(
         updatedProduct.id,
         1,
         updatedProduct.price,
       );
 
       // Update the product stock
-      await _supabaseService.updateProduct(updatedProduct);
+      await supabaseService.updateProduct(updatedProduct);
 
       _showSuccess('Sale processed successfully');
 
-      setState(() {
-        _currentProduct = updatedProduct;
-      });
+      if (mounted) {
+        setState(() {
+          _currentProduct = updatedProduct;
+        });
+      }
     } catch (e) {
       _showError('Error processing sale: $e');
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -216,6 +242,7 @@ class _ScanScreenState extends State<ScanScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               _currentProduct!.title,
@@ -252,31 +279,33 @@ class _ScanScreenState extends State<ScanScreen> {
       ),
       body: Stack(
         children: [
-          Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        decoration: const InputDecoration(
-                          hintText: 'Search by product name',
-                          border: OutlineInputBorder(),
+          SingleChildScrollView(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: const InputDecoration(
+                            hintText: 'Search by product name',
+                            border: OutlineInputBorder(),
+                          ),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.camera_alt),
-                      onPressed: _scanBarcode,
-                    ),
-                  ],
+                      IconButton(
+                        icon: const Icon(Icons.camera_alt),
+                        onPressed: _scanBarcode,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              _buildSearchResults(),
-              _buildProductCard(),
-            ],
+                _buildSearchResults(),
+                _buildProductCard(),
+              ],
+            ),
           ),
           if (_isLoading)
             Container(
