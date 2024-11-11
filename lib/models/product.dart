@@ -1,47 +1,47 @@
-import 'package:flutter/foundation.dart';
-
 class Product {
   final String id;
-  final String barcode;
-  final String name;
+  final String title;
+  final String? description;
   final double price;
+  final String? imageUrl;
+  final String barcode;
   int stockQuantity;
-  DateTime? createdAt;
-  DateTime? updatedAt;
+  final DateTime createdAt;
 
   Product({
     required this.id,
-    required this.barcode,
-    required this.name,
+    required this.title,
+    this.description,
     required this.price,
+    this.imageUrl,
+    required this.barcode,
     required this.stockQuantity,
-    this.createdAt,
-    this.updatedAt,
+    required this.createdAt,
   });
+
+  factory Product.fromJson(Map<String, dynamic> json) {
+    return Product(
+      id: json['id'],
+      title: json['title'],
+      description: json['description'],
+      price: double.parse(json['price'].toString()),
+      imageUrl: json['image_url'],
+      barcode: json['barcode'] ?? '',
+      stockQuantity: json['stock_quantity'] ?? 0,
+      createdAt: DateTime.parse(json['created_at']),
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'barcode': barcode,
-      'name': name,
+      'title': title,
+      'description': description,
       'price': price,
+      'image_url': imageUrl,
+      'barcode': barcode,
       'stock_quantity': stockQuantity,
-      'created_at': createdAt?.toIso8601String(),
-      'updated_at': updatedAt?.toIso8601String(),
+      'created_at': createdAt.toIso8601String(),
     };
-  }
-
-  factory Product.fromJson(Map<String, dynamic> map) {
-    return Product(
-      id: map['id'] ?? '',
-      barcode: map['barcode'] ?? '',
-      name: map['name'] ?? '',
-      price: (map['price'] ?? 0).toDouble(),
-      stockQuantity: map['stock_quantity'] ?? 0,
-      createdAt:
-          map['created_at'] != null ? DateTime.parse(map['created_at']) : null,
-      updatedAt:
-          map['updated_at'] != null ? DateTime.parse(map['updated_at']) : null,
-    );
   }
 }

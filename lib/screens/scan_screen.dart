@@ -191,7 +191,7 @@ class _ScanScreenState extends State<ScanScreen> {
         itemBuilder: (context, index) {
           final product = _searchResults[index];
           return ListTile(
-            title: Text(product.name),
+            title: Text(product.title),
             subtitle: Text('\$${product.price.toStringAsFixed(2)}'),
             trailing: Text('Stock: ${product.stockQuantity}'),
             onTap: () {
@@ -218,7 +218,7 @@ class _ScanScreenState extends State<ScanScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _currentProduct!.name,
+              _currentProduct!.title,
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
