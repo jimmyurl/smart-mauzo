@@ -3,6 +3,10 @@ import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/supabase_service.dart';
 import '../models/product.dart';
+import '../screens/sales_screen.dart';
+import '../screens/inventory_screen.dart';
+import '../screens/stock_screen.dart';
+import '../screens/report_screen.dart';
 
 class ScanScreen extends StatefulWidget {
   const ScanScreen({Key? key}) : super(key: key);
@@ -19,22 +23,19 @@ class _ScanScreenState extends State<ScanScreen> {
   bool _isOnline = true;
   bool _isLoading = false;
 
-  late Future<SupabaseService> _supabaseServiceFuture;
-
   @override
   void initState() {
     super.initState();
-    _supabaseServiceFuture = _initializeServices();
+    _initializeServices();
     _checkConnectivity();
     _setupConnectivityListener();
     _searchController.addListener(_onSearchChanged);
   }
 
-  Future<SupabaseService> _initializeServices() async {
+  Future<void> _initializeServices() async {
     if (!_supabaseService.isInitialized) {
       await _supabaseService.initialize();
     }
-    return _supabaseService; // Return the initialized service
   }
 
   @override
@@ -136,8 +137,7 @@ class _ScanScreenState extends State<ScanScreen> {
         });
 
         try {
-          final supabaseService = await _supabaseServiceFuture;
-          final product = await supabaseService.getProductByBarcode(barcode);
+          final product = await _supabaseService.getProductByBarcode(barcode);
 
           if (mounted) {
             setState(() {
@@ -171,21 +171,19 @@ class _ScanScreenState extends State<ScanScreen> {
     });
 
     try {
-      final supabaseService = await _supabaseServiceFuture;
-
       // Update product quantity
       final updatedProduct = _currentProduct!;
       updatedProduct.stockQuantity--;
 
       // Record the sale
-      await supabaseService.recordSale(
+      await _supabaseService.recordSale(
         updatedProduct.id,
         1,
         updatedProduct.price,
       );
 
       // Update the product stock
-      await supabaseService.updateProduct(updatedProduct);
+      await _supabaseService.updateProduct(updatedProduct);
 
       _showSuccess('Sale processed successfully');
 
@@ -264,6 +262,36 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
+  Widget _buildCardWidget({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Card(
+        elevation: 4,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 32),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -301,6 +329,59 @@ class _ScanScreenState extends State<ScanScreen> {
                       ),
                     ],
                   ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildCardWidget(
+                      icon: Icons.attach_money,
+                      title: 'Sales',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SalesScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _buildCardWidget(
+                      icon: Icons.inventory,
+                      title: 'Inventory',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const InventoryScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _buildCardWidget(
+                      icon: Icons.assessment,
+                      title: 'Stock',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const StockScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _buildCardWidget(
+                      icon: Icons.insert_chart,
+                      title: 'Report',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ReportScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
                 _buildSearchResults(),
                 _buildProductCard(),
