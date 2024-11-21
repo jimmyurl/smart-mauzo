@@ -12,6 +12,7 @@ class InventoryScreen extends StatefulWidget {
 class _InventoryScreenState extends State<InventoryScreen> {
   final SupabaseService _supabaseService = SupabaseService();
   List<Product> _products = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -21,19 +22,31 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   Future<void> _fetchProducts() async {
     try {
-      final products = await _supabaseService.fetchProducts();
+      setState(() {
+        _isLoading = true;
+      });
+
+      final products = await _supabaseService.getProducts();
+
       if (mounted) {
         setState(() {
           _products = products;
+          _isLoading = false;
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error fetching products: $e'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error fetching products: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
   }
 
@@ -42,21 +55,29 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Inventory'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _fetchProducts,
+          ),
+        ],
       ),
-      body: _products.isEmpty
+      body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              itemCount: _products.length,
-              itemBuilder: (context, index) {
-                final product = _products[index];
-                return ListTile(
-                  title: Text(product.title),
-                  subtitle:
-                      Text('Price: \$${product.price.toStringAsFixed(2)}'),
-                  trailing: Text('In Stock: ${product.stockQuantity}'),
-                );
-              },
-            ),
+          : _products.isEmpty
+              ? const Center(child: Text('No products found'))
+              : ListView.builder(
+                  itemCount: _products.length,
+                  itemBuilder: (context, index) {
+                    final product = _products[index];
+                    return ListTile(
+                      title: Text(product.title),
+                      subtitle:
+                          Text('Price: \$${product.price.toStringAsFixed(2)}'),
+                      trailing: Text('In Stock: ${product.stockQuantity}'),
+                    );
+                  },
+                ),
     );
   }
 }
