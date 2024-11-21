@@ -110,30 +110,30 @@ class SupabaseService {
       rethrow;
     }
   }
-}
 
-Future<List<Sale>> fetchSales() async {
-  try {
-    final response = await client
-        .from('sales')
-        .select('*, products(title)')
-        .order('sale_date', ascending: false)
-        .limit(100)
-        .then((value) => value as List);
+  Future<List<Sale>> fetchSales() async {
+    try {
+      final response = await client
+          .from('sales')
+          .select('*, products(title)')
+          .order('sale_date', ascending: false)
+          .limit(100)
+          .then((value) => value as List);
 
-    return response.map((json) {
-      // Merge product title from the joined products table
-      final productTitle = json['products'] != null
-          ? json['products']['title'] ?? 'Unknown Product'
-          : 'Unknown Product';
+      return response.map((json) {
+        // Merge product title from the joined products table
+        final productTitle = json['products'] != null
+            ? json['products']['title'] ?? 'Unknown Product'
+            : 'Unknown Product';
 
-      return Sale.fromJson({
-        ...json,
-        'product_title': productTitle,
-      });
-    }).toList();
-  } catch (e) {
-    debugPrint('Error fetching sales: $e');
-    rethrow;
+        return Sale.fromJson({
+          ...json,
+          'product_title': productTitle,
+        });
+      }).toList();
+    } catch (e) {
+      debugPrint('Error fetching sales: $e');
+      rethrow;
+    }
   }
 }
