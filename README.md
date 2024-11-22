@@ -1,5 +1,5 @@
 
-# Scan & Sell
+# Smart Mauzo
 
 **Scan & Sell** is a Flutter-based mobile application designed to simplify inventory and sales management. The app allows users to scan items, track sales, and manage their profile, all with an intuitive interface and seamless navigation.
 
