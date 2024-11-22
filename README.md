@@ -78,7 +78,7 @@
 ## Folder Structure
 
 ```plaintext
-scan-and-sell/
+smart-mauzo/
 │
 ├── lib/
 │   ├── screens/
