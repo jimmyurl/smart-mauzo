@@ -114,14 +114,12 @@ class _ScanScreenState extends State<ScanScreen> {
         _isLoading = true;
       });
 
-      // Record the sale transaction
       await _supabaseService.recordSale(
         _currentProduct!.id.toString(),
         1,
         _currentProduct!.price,
       );
 
-      // Update the product with reduced stock quantity
       await _supabaseService.updateProduct(
         Product(
           id: _currentProduct!.id,
@@ -133,7 +131,6 @@ class _ScanScreenState extends State<ScanScreen> {
         ),
       );
 
-      // Fetch the updated product to refresh the UI
       final updatedProduct =
           await _supabaseService.getProductByBarcode(_currentProduct!.barcode);
 
@@ -290,91 +287,6 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
-  Widget _buildCurrentProductPanel() {
-    return Container(
-      width: MediaQuery.of(context).size.width * 0.3,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text(
-              'Current Product',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const Divider(height: 1),
-          if (_currentProduct != null)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _currentProduct!.title,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildProductDetail(
-                    'Price',
-                    '\$${_currentProduct!.price.toStringAsFixed(2)}',
-                  ),
-                  const SizedBox(height: 8),
-                  _buildProductDetail(
-                    'Stock',
-                    '${_currentProduct!.stockQuantity} units',
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _currentProduct!.stockQuantity > 0
-                          ? _processTransaction
-                          : null,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text('Process Sale'),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else
-            const Expanded(
-              child: Center(
-                child: Text(
-                  'No product selected',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildProductDetail(String label, String value) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -394,6 +306,94 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCurrentProductPanel() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Container(
+          width: MediaQuery.of(context).size.width * 0.3,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                spreadRadius: 1,
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Current Product',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: _currentProduct != null
+                    ? SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _currentProduct!.title,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            _buildProductDetail(
+                              'Price',
+                              '\$${_currentProduct!.price.toStringAsFixed(2)}',
+                            ),
+                            const SizedBox(height: 8),
+                            _buildProductDetail(
+                              'Stock',
+                              '${_currentProduct!.stockQuantity} units',
+                            ),
+                            const SizedBox(height: 24),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: _currentProduct!.stockQuantity > 0
+                                    ? _processTransaction
+                                    : null,
+                                style: ElevatedButton.styleFrom(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 16),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: const Text('Process Sale'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : const Center(
+                        child: Text(
+                          'No product selected',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -513,100 +513,106 @@ class _ScanScreenState extends State<ScanScreen> {
         elevation: 0,
         backgroundColor: Colors.white,
       ),
-      body: Stack(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return Stack(
             children: [
-              // Left Panel
-              Expanded(
-                flex: 2,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSearchBar(),
-                      const SizedBox(height: 24),
-                      GridView.count(
-                        shrinkWrap: true,
-                        crossAxisCount: 2,
-                        mainAxisSpacing: 16,
-                        crossAxisSpacing: 16,
-                        childAspectRatio: 1.5,
-                        physics: const NeverScrollableScrollPhysics(),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildQuickActionCard(
-                            icon: Icons.attach_money,
-                            title: 'Sales',
-                            subtitle: 'Manage transactions',
-                            color: Colors.green,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const SalesScreen(),
+                          _buildSearchBar(),
+                          const SizedBox(height: 24),
+                          GridView.count(
+                            shrinkWrap: true,
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 16,
+                            crossAxisSpacing: 16,
+                            childAspectRatio: 1.5,
+                            physics: const NeverScrollableScrollPhysics(),
+                            children: [
+                              _buildQuickActionCard(
+                                icon: Icons.attach_money,
+                                title: 'Sales',
+                                subtitle: 'Manage transactions',
+                                color: Colors.green,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const SalesScreen(),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                          _buildQuickActionCard(
-                            icon: Icons.inventory,
-                            title: 'Inventory',
-                            subtitle: 'Manage products',
-                            color: Colors.purple,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const InventoryScreen(),
+                              _buildQuickActionCard(
+                                icon: Icons.inventory,
+                                title: 'Inventory',
+                                subtitle: 'Manage products',
+                                color: Colors.purple,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const InventoryScreen(),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                          _buildQuickActionCard(
-                            icon: Icons.assessment,
-                            title: 'Stock',
-                            subtitle: 'Track inventory',
-                            color: Colors.blue,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const StockScreen(),
+                              _buildQuickActionCard(
+                                icon: Icons.assessment,
+                                title: 'Stock',
+                                subtitle: 'Track inventory',
+                                color: Colors.blue,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const StockScreen(),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                          _buildQuickActionCard(
-                            icon: Icons.insert_chart,
-                            title: 'Reports',
-                            subtitle: 'View analytics',
-                            color: Colors.orange,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const ReportScreen(),
+                              _buildQuickActionCard(
+                                icon: Icons.insert_chart,
+                                title: 'Reports',
+                                subtitle: 'View analytics',
+                                color: Colors.orange,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const ReportScreen(),
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
+                          const SizedBox(height: 16),
+                          _buildSearchResults(),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      _buildSearchResults(),
-                    ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: SizedBox(
+                      height: constraints.maxHeight - 32,
+                      child: _buildCurrentProductPanel(),
+                    ),
+                  ),
+                ],
+              ),
+              if (_isLoading)
+                Container(
+                  color: Colors.black26,
+                  child: const Center(
+                    child: CircularProgressIndicator(),
                   ),
                 ),
-              ),
-              // Right Panel - Current Product
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: _buildCurrentProductPanel(),
-              ),
             ],
-          ),
-          if (_isLoading)
-            Container(
-              color: Colors.black26,
-              child: const Center(
-                child: CircularProgressIndicator(),
-              ),
-            ),
-        ],
+          );
+        },
       ),
     );
   }
