@@ -148,4 +148,3 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 For support or inquiries:
 - **Email**: jimmy.james365@gmail.com
 - **GitHub**: [jimmyurl](https://github.com/jimmyurl)
-``` 
