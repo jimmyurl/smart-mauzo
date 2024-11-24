@@ -1,598 +1,333 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import '../services/supabase_service.dart';
-import '../models/product.dart';
-import '../screens/sales_screen.dart';
-import '../screens/inventory_screen.dart';
-import '../screens/stock_screen.dart';
-import '../screens/report_screen.dart';
 
-class ScanScreen extends StatefulWidget {
+class ScanScreen extends StatelessWidget {
   const ScanScreen({Key? key}) : super(key: key);
 
   @override
-  State<ScanScreen> createState() => _ScanScreenState();
-}
-
-class _ScanScreenState extends State<ScanScreen> {
-  final SupabaseService _supabaseService = SupabaseService();
-  final TextEditingController _searchController = TextEditingController();
-  Product? _currentProduct;
-  List<Product> _searchResults = [];
-  bool _isOnline = true;
-  bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkConnectivity();
-    _searchController.addListener(_onSearchChanged);
-  }
-
-  @override
-  void dispose() {
-    _searchController.removeListener(_onSearchChanged);
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _checkConnectivity() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    setState(() {
-      _isOnline = connectivityResult != ConnectivityResult.none;
-    });
-
-    Connectivity().onConnectivityChanged.listen((result) {
-      setState(() {
-        _isOnline = result != ConnectivityResult.none;
-      });
-    });
-  }
-
-  void _onSearchChanged() {
-    if (_searchController.text.isEmpty) {
-      setState(() {
-        _searchResults.clear();
-      });
-      return;
-    }
-
-    Future.delayed(const Duration(milliseconds: 300), () async {
-      if (_searchController.text.isNotEmpty) {
-        final results =
-            await _supabaseService.searchProducts(_searchController.text);
-        setState(() {
-          _searchResults = results;
-        });
-      }
-    });
-  }
-
-  Future<void> _scanBarcode() async {
-    try {
-      final barcode = await FlutterBarcodeScanner.scanBarcode(
-        '#ff6666',
-        'Cancel',
-        true,
-        ScanMode.BARCODE,
-      );
-
-      if (barcode != '-1') {
-        setState(() {
-          _isLoading = true;
-        });
-
-        final product = await _supabaseService.getProductByBarcode(barcode);
-
-        setState(() {
-          _currentProduct = product;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error scanning barcode: ${e.toString()}'),
-            backgroundColor: Colors.red,
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.blue[900]!,
+              Colors.blue[800]!,
+            ],
           ),
-        );
-      }
-    }
-  }
-
-  Future<void> _processTransaction() async {
-    if (_currentProduct == null) return;
-
-    try {
-      setState(() {
-        _isLoading = true;
-      });
-
-      await _supabaseService.recordSale(
-        _currentProduct!.id.toString(),
-        1,
-        _currentProduct!.price,
-      );
-
-      await _supabaseService.updateProduct(
-        Product(
-          id: _currentProduct!.id,
-          title: _currentProduct!.title,
-          price: _currentProduct!.price,
-          createdAt: _currentProduct!.createdAt,
-          stockQuantity: _currentProduct!.stockQuantity - 1,
-          barcode: _currentProduct!.barcode,
         ),
-      );
-
-      final updatedProduct =
-          await _supabaseService.getProductByBarcode(_currentProduct!.barcode);
-
-      setState(() {
-        _currentProduct = updatedProduct;
-        _isLoading = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Sale processed successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error processing sale: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Widget _buildSearchBar() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.search, color: Colors.grey.shade400),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: const InputDecoration(
-                        hintText: 'Search products...',
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 12),
-                      ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _buildAppBar(),
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 30),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(30),
+                      topRight: Radius.circular(30),
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Material(
-            color: Theme.of(context).primaryColor,
-            borderRadius: BorderRadius.circular(8),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: _scanBarcode,
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                child: const Icon(
-                  Icons.camera_alt,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchResults() {
-    if (_searchResults.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(top: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              'Search Results (${_searchResults.length})',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const Divider(height: 1),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _searchResults.length,
-            separatorBuilder: (context, index) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final product = _searchResults[index];
-              return ListTile(
-                onTap: () {
-                  setState(() {
-                    _currentProduct = product;
-                    _searchResults.clear();
-                    _searchController.clear();
-                  });
-                },
-                title: Text(product.title),
-                subtitle: Text(
-                  'Stock: ${product.stockQuantity} units',
-                  style: TextStyle(color: Colors.grey.shade600),
-                ),
-                trailing: Text(
-                  '\$${product.price.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        _buildWelcomeSection(),
+                        _buildQuickActions(),
+                        _buildRecentTransactions(),
+                      ],
+                    ),
                   ),
                 ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickActionCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                spreadRadius: 1,
-                blurRadius: 4,
-                offset: const Offset(0, 1),
               ),
             ],
           ),
-          child: SingleChildScrollView(
-            // Wrap with SingleChildScrollView
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          // Implement scan functionality
+        },
+        backgroundColor: Colors.blue[900],
+        icon: const Icon(Icons.qr_code_scanner),
+        label: const Text('Scan Product'),
+      ),
+    );
+  }
+
+  Widget _buildAppBar() {
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Smart POS',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                'Welcome back!',
+                style: TextStyle(
+                  color: Colors.blue[100],
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+          CircleAvatar(
+            backgroundColor: Colors.blue[700],
+            child: const Icon(
+              Icons.person,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWelcomeSection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.purple[400]!, Colors.purple[600]!],
+          ),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Today\'s Sales',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              '\$1,234.56',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: color, size: 24),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w600),
-                  maxLines: 1, // Add constraints
-                  overflow: TextOverflow.ellipsis, // Handle overflow
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  maxLines: 2, // Add constraints
-                  overflow: TextOverflow.ellipsis, // Handle overflow
-                ),
+                _buildSalesStat('Orders', '23'),
+                _buildSalesStat('Items Sold', '45'),
+                _buildSalesStat('Profit', '+15%'),
               ],
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildCurrentProductPanel() {
+  Widget _buildSalesStat(String label, String value) {
     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
+        color: Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text(
-              'Current Product',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
             ),
           ),
-          const Divider(height: 1),
-          if (_currentProduct != null)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _currentProduct!.title,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildProductDetail(
-                    'Price',
-                    '\$${_currentProduct!.price.toStringAsFixed(2)}',
-                  ),
-                  const SizedBox(height: 8),
-                  _buildProductDetail(
-                    'Stock',
-                    '${_currentProduct!.stockQuantity} units',
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _currentProduct!.stockQuantity > 0
-                          ? _processTransaction
-                          : null,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text('Process Sale'),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(
-                child: Text(
-                  'No product selected',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
             ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildProductDetail(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildQuickActions() {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Quick Actions',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildActionButton(
+                icon: Icons.shopping_cart,
+                label: 'New Sale',
+                color: Colors.blue,
+              ),
+              _buildActionButton(
+                icon: Icons.inventory,
+                label: 'Inventory',
+                color: Colors.green,
+              ),
+              _buildActionButton(
+                icon: Icons.assessment,
+                label: 'Reports',
+                color: Colors.orange,
+              ),
+              _buildActionButton(
+                icon: Icons.settings,
+                label: 'Settings',
+                color: Colors.purple,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Column(
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey.shade600,
+        Container(
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Icon(
+            icon,
+            color: color,
+            size: 30,
           ),
         ),
+        const SizedBox(height: 8),
         Text(
-          value,
+          label,
           style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ],
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Icon(Icons.shopping_bag, color: Theme.of(context).primaryColor),
-            const SizedBox(width: 8),
-            const Text('Smart POS'),
-          ],
-        ),
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: _isOnline ? Colors.green.shade50 : Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: _isOnline ? Colors.green : Colors.grey,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  _isOnline ? 'Online' : 'Offline',
-                  style: TextStyle(
-                    color: _isOnline ? Colors.green : Colors.grey,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-        elevation: 0,
-        backgroundColor: Colors.white,
-      ),
-      body: Row(
+  Widget _buildRecentTransactions() {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Left side - Main content
-          Expanded(
-            flex: 7,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  _buildSearchBar(),
-                  const SizedBox(height: 24),
-                  GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    childAspectRatio: 1.5,
-                    children: [
-                      _buildQuickActionCard(
-                        icon: Icons.attach_money,
-                        title: 'Sales',
-                        subtitle: 'Manage transactions',
-                        color: Colors.green,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const SalesScreen()),
-                        ),
-                      ),
-                      _buildQuickActionCard(
-                        icon: Icons.inventory,
-                        title: 'Inventory',
-                        subtitle: 'Manage products',
-                        color: Colors.purple,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const InventoryScreen()),
-                        ),
-                      ),
-                      _buildQuickActionCard(
-                        icon: Icons.assessment,
-                        title: 'Stock',
-                        subtitle: 'Track inventory',
-                        color: Colors.blue,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const StockScreen()),
-                        ),
-                      ),
-                      _buildQuickActionCard(
-                        icon: Icons.insert_chart,
-                        title: 'Reports',
-                        subtitle: 'View analytics',
-                        color: Colors.orange,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const ReportScreen()),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_searchResults.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    _buildSearchResults(),
-                  ],
-                ],
-              ),
+          const Text(
+            'Recent Transactions',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
             ),
           ),
-
-          // Right side - Current product panel
-          SizedBox(
-            width: MediaQuery.of(context).size.width * 0.3,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: _buildCurrentProductPanel(),
-            ),
+          const SizedBox(height: 20),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: 5,
+            itemBuilder: (context, index) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.shopping_bag,
+                        color: Colors.blue[900],
+                      ),
+                    ),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Order #1234',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '2 items',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Text(
+                          '\$45.99',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '2 mins ago',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
