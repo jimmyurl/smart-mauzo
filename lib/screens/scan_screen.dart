@@ -67,7 +67,7 @@ class ScanScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Smart POS',
+                'SmartMAUZO',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 24,

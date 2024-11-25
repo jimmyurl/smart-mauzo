@@ -1,6 +1,3 @@
-import 'package:flutter/foundation.dart';
-
-@immutable
 class Sale {
   final String id;
   final String productId;
@@ -9,7 +6,7 @@ class Sale {
   final double total;
   final DateTime timestamp;
 
-  const Sale({
+  Sale({
     required this.id,
     required this.productId,
     required this.productTitle,
@@ -18,28 +15,25 @@ class Sale {
     required this.timestamp,
   });
 
-  // Optional: Factory constructor to create a Sale from a JSON map
-  factory Sale.fromJson(Map<String, dynamic> json) {
-    return Sale(
-      id: json['id'].toString(),
-      productId: json['product_id'].toString(),
-      productTitle:
-          json['product_title'] ?? '', // Ensure a default value if null
-      quantity: json['quantity'] as int,
-      total: (json['total_price'] as num).toDouble(),
-      timestamp: DateTime.parse(json['sale_date']),
-    );
-  }
-
-  // Optional: Method to convert Sale to a JSON map
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'product_id': productId,
       'product_title': productTitle,
       'quantity': quantity,
-      'total_price': total,
-      'sale_date': timestamp.toIso8601String(),
+      'total': total,
+      'timestamp': timestamp.toIso8601String(),
     };
+  }
+
+  factory Sale.fromJson(Map<String, dynamic> json) {
+    return Sale(
+      id: json['id'],
+      productId: json['product_id'],
+      productTitle: json['product_title'],
+      quantity: json['quantity'],
+      total: (json['total'] as num).toDouble(),
+      timestamp: DateTime.parse(json['timestamp']),
+    );
   }
 }

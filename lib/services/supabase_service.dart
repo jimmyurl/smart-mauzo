@@ -1,45 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../models/product.dart';
 import '../models/sale.dart';
 
 class SupabaseService {
-  static final SupabaseService _instance = SupabaseService._internal();
-  factory SupabaseService() => _instance;
+  static const String SUPABASE_URL = 'YOUR_SUPABASE_URL';
+  static const String SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 
   late final SupabaseClient client;
-  bool _initialized = false;
+  final _uuid = Uuid();
+
+  Future<void> initialize() async {
+    await Supabase.initialize(
+      url: SUPABASE_URL,
+      anonKey: SUPABASE_ANON_KEY,
+    );
+    client = Supabase.instance.client;
+  }
+
+  // Singleton pattern
+  static final SupabaseService _instance = SupabaseService._internal();
+
+  factory SupabaseService() {
+    return _instance;
+  }
 
   SupabaseService._internal();
 
-  Future<void> initialize() async {
-    if (!_initialized) {
-      await Supabase.initialize(
-        url: 'https://ajlzuhtyyaxlobcljusi.supabase.co',
-        anonKey:
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqbHp1aHR5eWF4bG9iY2xqdXNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjM3MTA1NTAsImV4cCI6MjAzOTI4NjU1MH0.3deZCnbg63e5JUgupnACPfpATw7ViKe9V08Eq9L5G74',
-      );
-      client = Supabase.instance.client;
-      _initialized = true;
-    }
-  }
-
-  // Returns true if the client is ready to use
-  bool get isInitialized => _initialized;
-
-  Future<List<Product>> getProducts() async {
-    try {
-      final response = await client
-          .from('products')
-          .select()
-          .order('title')
-          .then((value) => value as List);
-
-      return response.map((json) => Product.fromJson(json)).toList();
-    } catch (e) {
-      debugPrint('Error fetching products: $e');
-      rethrow;
-    }
+  // Helper method to get client
+  SupabaseClient get supabaseClient {
+    return client;
   }
 
   Future<Product?> getProductByBarcode(String barcode) async {
@@ -48,92 +39,57 @@ class SupabaseService {
           .from('products')
           .select()
           .eq('barcode', barcode)
-          .limit(1)
-          .maybeSingle();
+          .single();
 
-      if (response != null) {
-        return Product.fromJson(response);
-      }
-      return null;
+      return Product.fromJson(response);
     } catch (e) {
-      debugPrint('Error fetching product: $e');
-      rethrow;
+      print('Error fetching product: $e');
+      return null;
     }
   }
 
-  Future<void> updateProduct(Product product) async {
+  Future<bool> recordSale(Product product, int quantity) async {
     try {
+      final String saleId = _uuid.v4();
+      final double total = product.price * quantity;
+
+      final sale = Sale(
+        id: saleId,
+        productId: product.id,
+        productTitle: product.title, // Changed from name to title
+        quantity: quantity,
+        total: total,
+        timestamp: DateTime.now(),
+      );
+
+      // Record the sale
+      await client.from('sales').insert(sale.toJson());
+
+      // Update product stock
+      final newStockQuantity = product.stockQuantity - quantity;
       await client
           .from('products')
-          .update({
-            'stock_quantity': product.stockQuantity,
-            'price': product.price,
-            'title': product.title,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', product.id)
-          .then((value) => null);
+          .update({'stock_quantity': newStockQuantity}).eq('id', product.id);
+
+      return true;
     } catch (e) {
-      debugPrint('Error updating product: $e');
-      rethrow;
+      print('Error recording sale: $e');
+      return false;
     }
   }
 
-  Future<List<Product>> searchProducts(String query) async {
-    try {
-      final response = await client
-          .from('products')
-          .select()
-          .or('title.ilike.%$query%,barcode.ilike.%$query%')
-          .order('title')
-          .limit(20)
-          .then((value) => value as List);
-
-      return response.map((json) => Product.fromJson(json)).toList();
-    } catch (e) {
-      debugPrint('Error searching products: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> recordSale(
-      String productId, int quantity, double totalPrice) async {
-    try {
-      await client.from('sales').insert({
-        'product_id': productId,
-        'quantity': quantity,
-        'total_price': totalPrice,
-        'sale_date': DateTime.now().toIso8601String(),
-      }).then((value) => null);
-    } catch (e) {
-      debugPrint('Error recording sale: $e');
-      rethrow;
-    }
-  }
-
-  Future<List<Sale>> fetchSales() async {
+  Future<List<Sale>> getRecentSales([int limit = 10]) async {
     try {
       final response = await client
           .from('sales')
-          .select('*, products(title)')
-          .order('sale_date', ascending: false)
-          .limit(100)
-          .then((value) => value as List);
+          .select()
+          .order('timestamp', ascending: false)
+          .limit(limit);
 
-      return response.map((json) {
-        // Merge product title from the joined products table
-        final productTitle = json['products'] != null
-            ? json['products']['title'] ?? 'Unknown Product'
-            : 'Unknown Product';
-
-        return Sale.fromJson({
-          ...json,
-          'product_title': productTitle,
-        });
-      }).toList();
+      return response.map<Sale>((json) => Sale.fromJson(json)).toList();
     } catch (e) {
-      debugPrint('Error fetching sales: $e');
-      rethrow;
+      print('Error fetching recent sales: $e');
+      return [];
     }
   }
 }
