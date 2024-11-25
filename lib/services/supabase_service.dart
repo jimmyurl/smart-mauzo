@@ -56,7 +56,7 @@ class SupabaseService {
       final sale = Sale(
         id: saleId,
         productId: product.id,
-        productTitle: product.title, // Changed from name to title
+        productTitle: product.title,
         quantity: quantity,
         total: total,
         timestamp: DateTime.now(),
@@ -90,6 +90,32 @@ class SupabaseService {
     } catch (e) {
       print('Error fetching recent sales: $e');
       return [];
+    }
+  }
+
+  // Add the fetchSales method that's being called by the screens
+  Future<List<Sale>> fetchSales() async {
+    try {
+      final response = await client
+          .from('sales')
+          .select()
+          .order('timestamp', ascending: false);
+
+      return response.map<Sale>((json) => Sale.fromJson(json)).toList();
+    } catch (e) {
+      print('Error fetching all sales: $e');
+      throw 'Failed to fetch sales: $e';
+    }
+  }
+
+  Future<List<Product>> getProducts() async {
+    try {
+      final response = await client.from('products').select().order('title');
+
+      return response.map<Product>((json) => Product.fromJson(json)).toList();
+    } catch (e) {
+      print('Error fetching products: $e');
+      throw 'Failed to fetch products: $e';
     }
   }
 }
