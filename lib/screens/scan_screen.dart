@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:qr_code_scanner/qr_code_scanner.dart';
+import 'package:smart_mauzo/screens/qr_code_scanner_screen.dart';
 
 class ScanScreen extends StatelessWidget {
   const ScanScreen({Key? key}) : super(key: key);
@@ -47,14 +49,30 @@ class ScanScreen extends StatelessWidget {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // Implement scan functionality
-        },
+        onPressed: () => _scanProduct(context),
         backgroundColor: Colors.blue[900],
         icon: const Icon(Icons.qr_code_scanner),
         label: const Text('Scan Product'),
       ),
     );
+  }
+
+  // Method to handle product scanning
+  void _scanProduct(BuildContext context) async {
+    // Navigate to a QR code scanner screen or show a dialog
+    Barcode? result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const QRCodeScannerScreen(),
+      ),
+    );
+
+    if (result != null) {
+      // Handle the scanned result
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Scanned: ${result.code}')),
+      );
+    }
   }
 
   Widget _buildAppBar() {
