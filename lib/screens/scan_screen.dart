@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'package:smart_mauzo/screens/qr_code_scanner_screen.dart';
+import '../screens/sale_screen.dart';
+import '../screens/inventory_screen.dart';
+import '../screens/report_screen.dart';
 
 class ScanScreen extends StatelessWidget {
   const ScanScreen({Key? key}) : super(key: key);
@@ -37,7 +40,7 @@ class ScanScreen extends StatelessWidget {
                     child: Column(
                       children: [
                         _buildWelcomeSection(),
-                        _buildQuickActions(),
+                        _buildQuickActions(context),
                         _buildRecentTransactions(),
                       ],
                     ),
@@ -189,7 +192,7 @@ class ScanScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildQuickActions() {
+  Widget _buildQuickActions(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -206,20 +209,40 @@ class ScanScreen extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildActionButton(
-                icon: Icons.shopping_cart,
-                label: 'New Sale',
-                color: Colors.blue,
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SaleScreen()),
+                ),
+                child: _buildActionButton(
+                  icon: Icons.shopping_cart,
+                  label: 'New Sale',
+                  color: Colors.blue,
+                ),
               ),
-              _buildActionButton(
-                icon: Icons.inventory,
-                label: 'Inventory',
-                color: Colors.green,
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const InventoryScreen()),
+                ),
+                child: _buildActionButton(
+                  icon: Icons.inventory,
+                  label: 'Inventory',
+                  color: Colors.green,
+                ),
               ),
-              _buildActionButton(
-                icon: Icons.assessment,
-                label: 'Reports',
-                color: Colors.orange,
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const ReportsScreen()),
+                ),
+                child: _buildActionButton(
+                  icon: Icons.assessment,
+                  label: 'Reports',
+                  color: Colors.orange,
+                ),
               ),
               _buildActionButton(
                 icon: Icons.settings,
