@@ -118,4 +118,17 @@ class SupabaseService {
       throw 'Failed to fetch products: $e';
     }
   }
+
+  Future<bool> updateProductStock(
+      String productId, int newStockQuantity) async {
+    try {
+      await client
+          .from('products')
+          .update({'stock_quantity': newStockQuantity}).eq('id', productId);
+      return true;
+    } catch (e) {
+      print('Error updating product stock: $e');
+      return false;
+    }
+  }
 }
