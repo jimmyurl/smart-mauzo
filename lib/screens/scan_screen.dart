@@ -63,17 +63,17 @@ class ScanScreen extends StatelessWidget {
   // Method to handle product scanning
   void _scanProduct(BuildContext context) async {
     // Navigate to a QR code scanner screen or show a dialog
-    Barcode? result = await Navigator.push(
+    String? result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => const QRCodeScannerScreen(),
       ),
     );
 
-    if (result != null) {
+    if (result != null && result.isNotEmpty) {
       // Handle the scanned result
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Scanned: ${result.code}')),
+        SnackBar(content: Text('Scanned: $result')),
       );
     }
   }
@@ -140,7 +140,7 @@ class ScanScreen extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             const Text(
-              '\$1,234.56',
+              'TZS 2,850,000',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 32,
@@ -351,7 +351,7 @@ class ScanScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         const Text(
-                          '\$45.99',
+                          'TZS 105,000',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                           ),
