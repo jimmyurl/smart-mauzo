@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:qr_code_scanner/qr_code_scanner.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 
 class QRCodeScannerScreen extends StatefulWidget {
   const QRCodeScannerScreen({Key? key}) : super(key: key);
@@ -9,8 +10,42 @@ class QRCodeScannerScreen extends StatefulWidget {
 }
 
 class _QRCodeScannerScreenState extends State<QRCodeScannerScreen> {
-  final GlobalKey qrKey = GlobalKey(debugLabel: 'QR');
-  QRViewController? controller;
+  @override
+  void initState() {
+    super.initState();
+    // Start scanning when the screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scanQR();
+    });
+  }
+
+  Future<void> _scanQR() async {
+    String barcodeScanRes;
+    
+    try {
+      barcodeScanRes = await FlutterBarcodeScanner.scanBarcode(
+        '#ff6666', // Line color
+        'Cancel', // Cancel button text
+        true, // Show flash icon
+        ScanMode.QR, // Specify scan mode (QR, BARCODE, DEFAULT)
+      );
+    } on PlatformException {
+      barcodeScanRes = 'Failed to get scan result';
+      Navigator.pop(context, null);
+      return;
+    }
+
+    if (!mounted) return;
+
+    // Return null if scan was cancelled
+    if (barcodeScanRes == '-1') {
+      Navigator.pop(context, null);
+      return;
+    }
+    
+    // Return the scan result to the previous screen
+    Navigator.pop(context, barcodeScanRes);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,31 +53,16 @@ class _QRCodeScannerScreenState extends State<QRCodeScannerScreen> {
       appBar: AppBar(
         title: const Text('Scan QR Code'),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            flex: 5,
-            child: QRView(
-              key: qrKey,
-              onQRViewCreated: _onQRViewCreated,
-            ),
-          ),
-        ],
+      body: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 20),
+            Text('Initializing scanner...'),
+          ],
+        ),
       ),
     );
-  }
-
-  void _onQRViewCreated(QRViewController controller) {
-    this.controller = controller;
-    controller.scannedDataStream.listen((scanData) {
-      controller.pauseCamera();
-      Navigator.pop(context, scanData);
-    });
-  }
-
-  @override
-  void dispose() {
-    controller?.dispose();
-    super.dispose();
   }
 }

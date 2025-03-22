@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'package:smart_mauzo/screens/qr_code_scanner_screen.dart';
 import '../screens/sale_screen.dart';
 import '../screens/inventory_screen.dart';
 import '../screens/report_screen.dart';
+import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 
 class ScanScreen extends StatelessWidget {
   const ScanScreen({Key? key}) : super(key: key);
