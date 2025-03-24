@@ -1,9 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:smart_mauzo/screens/qr_code_scanner_screen.dart';
-import '../screens/sale_screen.dart';
-import '../screens/inventory_screen.dart';
-import '../screens/report_screen.dart';
-import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:smart_mauzo/screens/sale_screen.dart';
+import 'package:smart_mauzo/screens/inventory_screen.dart';
+import 'package:smart_mauzo/screens/report_screen.dart';
+
+class MobileScannerPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Scan Barcode')),
+      body: MobileScanner(
+        onDetect: (capture) {
+          final List<Barcode> barcodes = capture.barcodes;
+          if (barcodes.isNotEmpty) {
+            final String code = barcodes.first.rawValue ?? '';
+            Navigator.of(context).pop(code);
+          }
+        },
+      ),
+    );
+  }
+}
 
 class ScanScreen extends StatelessWidget {
   const ScanScreen({Key? key}) : super(key: key);
@@ -60,20 +77,27 @@ class ScanScreen extends StatelessWidget {
     );
   }
 
-  // Method to handle product scanning
   void _scanProduct(BuildContext context) async {
-    // Navigate to a QR code scanner screen or show a dialog
-    String? result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const QRCodeScannerScreen(),
-      ),
-    );
+    try {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MobileScannerPage(),
+        ),
+      );
 
-    if (result != null && result.isNotEmpty) {
-      // Handle the scanned result
+      if (result != null && result.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Scanned: $result')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Scan canceled or failed')),
+        );
+      }
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Scanned: $result')),
+        SnackBar(content: Text('Error: $e')),
       );
     }
   }
