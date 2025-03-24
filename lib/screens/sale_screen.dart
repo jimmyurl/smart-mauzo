@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
+import 'package:mobile_scanner/mobile_scanner.dart'; 
 import 'package:smart_mauzo/models/product.dart';
 import 'package:smart_mauzo/models/sale.dart';
 import 'package:smart_mauzo/services/supabase_service.dart';
@@ -17,19 +17,19 @@ class _SaleScreenState extends State<SaleScreen> {
   final SupabaseService _supabaseService = SupabaseService();
   Product? _scannedProduct;
   int _quantity = 1;
-  final TextEditingController _quantityController =
-      TextEditingController(text: '1');
+  final TextEditingController _quantityController = TextEditingController(text: '1');
 
   Future<void> _scanBarcode() async {
     try {
-      String barcode = await FlutterBarcodeScanner.scanBarcode(
-        '#FF0000',
-        'Cancel',
-        true,
-        ScanMode.BARCODE,
+      // Navigate to the MobileScannerPage and get the scanned barcode
+      final barcode = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MobileScannerPage(),
+        ),
       );
 
-      if (barcode != '-1') {
+      if (barcode != null && barcode.isNotEmpty) {
         final product = await _supabaseService.getProductByBarcode(barcode);
         if (product != null) {
           setState(() {
@@ -40,7 +40,7 @@ class _SaleScreenState extends State<SaleScreen> {
         }
       }
     } catch (e) {
-      _showError('Error scanning barcode');
+      _showError('Error scanning barcode: $e');
     }
   }
 
@@ -53,8 +53,7 @@ class _SaleScreenState extends State<SaleScreen> {
     }
 
     // Fixed: Pass Product and quantity directly instead of creating Sale object
-    final success =
-        await _supabaseService.recordSale(_scannedProduct!, _quantity);
+    final success = await _supabaseService.recordSale(_scannedProduct!, _quantity);
 
     if (success) {
       _showSuccess();
@@ -77,8 +76,9 @@ class _SaleScreenState extends State<SaleScreen> {
   void _showSuccess() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-          content: Text('Sale recorded successfully'),
-          backgroundColor: Colors.green),
+        content: Text('Sale recorded successfully'),
+        backgroundColor: Colors.green,
+      ),
     );
   }
 
@@ -112,8 +112,7 @@ class _SaleScreenState extends State<SaleScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _scannedProduct!
-                            .title, // Fixed: Changed from name to title
+                        _scannedProduct!.title, // Fixed: Changed from name to title
                         style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -172,6 +171,25 @@ class _SaleScreenState extends State<SaleScreen> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+// Add the MobileScannerPage class for barcode scanning
+class MobileScannerPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Scan Barcode')),
+      body: MobileScanner(
+        onDetect: (capture) {
+          final List<Barcode> barcodes = capture.barcodes;
+          if (barcodes.isNotEmpty) {
+            final String code = barcodes.first.rawValue ?? '';
+            Navigator.of(context).pop(code);
+          }
+        },
       ),
     );
   }
