@@ -15,7 +15,7 @@ dependencies:
   mobile_scanner: ^3.5.5
   connectivity_plus: ^6.1.0
   supabase_flutter: ^2.8.0
-  barcode_scanner: ^5.1.0
+  barcode_scanner: ^6.1.1
   uuid: ^4.5.1
   intl: ^0.17.0
   charts_flutter: ^0.12.0
