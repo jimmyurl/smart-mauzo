@@ -1,11 +1,8 @@
-
 plugins {
     id "com.android.application"
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
 }
-
-
 
 android {
     namespace = "com.example.smart_mauzo"
@@ -27,22 +24,48 @@ android {
         targetSdkVersion = 34
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Enable multiDex if needed (for large apps)
+        multiDexEnabled = true
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.debug
-            minifyEnabled = true
-            proguardFiles(getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro')
+            signingConfig = signingConfigs.debug // Replace with your release config if needed
+            minifyEnabled = true    // Enables code shrinking
+            shrinkResources = true  // Removes unused resources (e.g., unused images)
+            proguardFiles(
+                getDefaultProguardFile('proguard-android-optimize.txt'),
+                'proguard-rules.pro'
+            )
+            // Optional: Disable debug symbols for further size reduction
+            ndk {
+                debugSymbolLevel = 'SYMBOL_TABLE'
+            }
+        }
+        debug {
+            minifyEnabled = false
+            shrinkResources = false
+        }
+    }
+
+    // Optional: Split APKs by ABI to reduce per-APK size
+    splits {
+        abi {
+            enable = true
+            reset()
+            include 'armeabi-v7a', 'arm64-v8a', 'x86_64'
+            universalApk = false
         }
     }
 }
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
-    implementation platform('com.google.firebase:firebase-bom:32.7.1')
     implementation "androidx.core:core-ktx:1.12.0"
-    // Removed the flutter project dependency as it's handled by the Flutter Gradle plugin
+    // Firebase BoM (keep only if you use Firebase; else remove)
+    implementation platform('com.google.firebase:firebase-bom:32.7.1')
+    // Add only the Firebase dependencies you actually use, e.g.:
+    // implementation 'com.google.firebase:firebase-analytics'
 }
 
 flutter {
