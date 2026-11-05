@@ -78,7 +78,12 @@ class _AuthScreenState extends State<AuthScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(Icons.shopping_bag_rounded, size: 64, color: blue),
+                  Image.asset(
+                    'assets/images/logo.png',
+                    height: 96,
+                    errorBuilder: (_, __, ___) =>
+                        Icon(Icons.shopping_bag_rounded, size: 64, color: blue),
+                  ),
                   const SizedBox(height: 12),
                   Text('Smart Mauzo',
                       textAlign: TextAlign.center,
