@@ -5,6 +5,7 @@ class Sale {
   final int quantity;
   final double total;
   final DateTime timestamp;
+  final String paymentMethod; // 'cash' | 'mobile'
 
   Sale({
     required this.id,
@@ -13,7 +14,10 @@ class Sale {
     required this.quantity,
     required this.total,
     required this.timestamp,
+    this.paymentMethod = 'cash',
   });
+
+  bool get isMobile => paymentMethod == 'mobile';
 
   Map<String, dynamic> toJson() {
     return {
@@ -23,6 +27,7 @@ class Sale {
       'quantity': quantity,
       'total': total,
       'timestamp': timestamp.toIso8601String(),
+      'payment_method': paymentMethod,
     };
   }
 
@@ -34,6 +39,7 @@ class Sale {
       quantity: json['quantity'],
       total: (json['total'] as num).toDouble(),
       timestamp: DateTime.parse(json['timestamp']),
+      paymentMethod: json['payment_method'] ?? 'cash',
     );
   }
 }
