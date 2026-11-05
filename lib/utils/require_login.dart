@@ -1,0 +1,31 @@
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../screens/auth_screen.dart';
+
+/// True if a user is currently logged in.
+bool get isLoggedIn => Supabase.instance.client.auth.currentSession != null;
+
+/// Call this before any action that needs an account (making a sale,
+/// opening inventory, etc).
+///
+/// Returns true if the user is logged in. If they are a guest, it opens the
+/// login/signup screen on top of the current screen and returns true only if
+/// they successfully logged in.
+///
+/// Usage:
+///   onTap: () async {
+///     if (!await requireLogin(context)) return;
+///     // ...do the protected thing
+///   }
+Future<bool> requireLogin(BuildContext context) async {
+  if (isLoggedIn) return true;
+
+  await Navigator.of(context).push(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => const AuthScreen(),
+    ),
+  );
+
+  return isLoggedIn;
+}
