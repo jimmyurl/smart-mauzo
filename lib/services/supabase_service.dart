@@ -66,6 +66,7 @@ class SupabaseService {
     required int stock,
     String barcode = '',
     String? description,
+    String category = 'Uncategorized',
   }) async {
     await client.from(_products).insert({
       'title': title,
@@ -73,6 +74,7 @@ class SupabaseService {
       'stock_quantity': stock,
       'barcode': barcode,
       'description': description,
+      'category': category.trim().isEmpty ? 'Uncategorized' : category.trim(),
     });
   }
 
@@ -88,6 +90,18 @@ class SupabaseService {
     }
   }
 
+  Future<bool> updateProductCategory(String productId, String category) async {
+    try {
+      await client
+          .from(_products)
+          .update({'category': category.trim()}).eq('id', productId);
+      return true;
+    } catch (e) {
+      debugPrint('Error updating product category: $e');
+      return false;
+    }
+  }
+
   // ------------------------------------------------------------------- sales
   /// Cash sale. Done in one database step that checks and reduces stock.
   Future<bool> recordSale(Product product, int quantity) async {
@@ -98,6 +112,22 @@ class SupabaseService {
     } catch (e) {
       debugPrint('Error recording sale: $e');
       return false;
+    }
+  }
+
+  /// Cash sale of a whole cart in ONE database transaction: either every line is
+  /// recorded and stock reduced, or nothing is. Returns null on success, otherwise
+  /// an error message to show. Each item: {'product_id': id, 'quantity': n}.
+  Future<String?> recordCartSale(List<Map<String, dynamic>> items) async {
+    try {
+      await client.rpc('sm_record_sale_cart', params: {'p_items': items});
+      return null;
+    } on PostgrestException catch (e) {
+      debugPrint('Error recording cart sale: ${e.message}');
+      return e.message;
+    } catch (e) {
+      debugPrint('Error recording cart sale: $e');
+      return '$e';
     }
   }
 
