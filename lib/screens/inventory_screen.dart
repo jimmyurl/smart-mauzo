@@ -1,23 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:intl/intl.dart';
-import 'package:fl_chart/fl_chart.dart';
 import '../models/product.dart';
-import '../models/sale.dart';
 import '../services/supabase_service.dart';
+import '../utils/money.dart';
+import 'add_product_screen.dart';
 
-// Inventory Screen
+/// Products: list, search, update stock, and register new items.
 class InventoryScreen extends StatefulWidget {
-  const InventoryScreen({Key? key}) : super(key: key);
+  const InventoryScreen({super.key});
 
   @override
-  _InventoryScreenState createState() => _InventoryScreenState();
+  State<InventoryScreen> createState() => _InventoryScreenState();
 }
 
 class _InventoryScreenState extends State<InventoryScreen> {
+  static const int _lowStock = 5;
+
   final SupabaseService _supabaseService = SupabaseService();
+  final TextEditingController _search = TextEditingController();
   List<Product> _products = [];
+  String _query = '';
   bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -25,124 +28,203 @@ class _InventoryScreenState extends State<InventoryScreen> {
     _loadInventory();
   }
 
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadInventory() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
-      setState(() => _isLoading = true);
       final products = await _supabaseService.getProducts();
+      if (!mounted) return;
       setState(() {
         _products = products;
         _isLoading = false;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading inventory: $e')),
-      );
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _error = '$e';
+      });
     }
   }
 
+  List<Product> get _visible {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _products;
+    return _products
+        .where((p) => p.title.toLowerCase().contains(q) || p.barcode.contains(q))
+        .toList();
+  }
+
+  void _msg(String text, {bool ok = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), backgroundColor: ok ? Colors.green : null),
+    );
+  }
+
   Future<void> _updateStock(Product product, int newQuantity) async {
-    try {
-      await _supabaseService.updateProductStock(product.id, newQuantity);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Stock updated successfully')),
-      );
+    final ok = await _supabaseService.updateProductStock(product.id, newQuantity);
+    if (!mounted) return;
+    if (ok) {
+      _msg('Stock updated', ok: true);
       _loadInventory();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error updating stock: $e')),
-      );
+    } else {
+      _msg('Could not update stock (only the shop owner can do this)');
     }
+  }
+
+  Future<void> _openAddProduct() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AddProductScreen()),
+    );
+    if (mounted) _loadInventory();
+  }
+
+  Color _stockColor(int qty) {
+    if (qty <= 0) return Colors.red;
+    if (qty <= _lowStock) return Colors.orange;
+    return Colors.green;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Inventory Management'),
+        title: const Text('Products'),
         backgroundColor: Colors.blue[900],
+        foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadInventory,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadInventory),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              itemCount: _products.length,
-              itemBuilder: (context, index) {
-                final product = _products[index];
-                return Card(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: ListTile(
-                    title: Text(product.title),
-                    subtitle: Text(
-                      'Price: \$${product.price.toStringAsFixed(2)} | Stock: ${product.stockQuantity}',
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit),
-                          onPressed: () => _showUpdateStockDialog(product),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.info_outline),
-                          onPressed: () => _showProductDetails(product),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: TextField(
+              controller: _search,
+              decoration: InputDecoration(
+                hintText: 'Search by name or barcode',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _query = v),
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddProductDialog(),
-        child: const Icon(Icons.add),
+          ),
+          Expanded(child: _buildBody()),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openAddProduct,
         backgroundColor: Colors.blue[900],
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add),
+        label: const Text('Add item'),
       ),
     );
   }
 
-  Future<void> _showUpdateStockDialog(Product product) async {
-    final TextEditingController controller = TextEditingController(
-      text: product.stockQuantity.toString(),
+  Widget _buildBody() {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              ElevatedButton(onPressed: _loadInventory, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      );
+    }
+    final items = _visible;
+    if (items.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            _products.isEmpty
+                ? 'No items yet.\nTap "Add item" to register your first product.'
+                : 'No items match your search.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _loadInventory,
+      child: ListView.builder(
+        padding: const EdgeInsets.only(bottom: 88),
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          final product = items[index];
+          final color = _stockColor(product.stockQuantity);
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: ListTile(
+              onTap: () => _showProductDetails(product),
+              leading: CircleAvatar(
+                backgroundColor: color.withOpacity(0.12),
+                child: Icon(Icons.inventory_2_outlined, color: color),
+              ),
+              title: Text(product.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(
+                '${tzs(product.price)}  •  ${product.stockQuantity} in stock'
+                '${product.stockQuantity <= 0 ? '  (out of stock)' : product.stockQuantity <= _lowStock ? '  (low)' : ''}',
+                style: TextStyle(color: color),
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.edit),
+                tooltip: 'Update stock',
+                onPressed: () => _showUpdateStockDialog(product),
+              ),
+            ),
+          );
+        },
+      ),
     );
+  }
 
+  Future<void> _showUpdateStockDialog(Product product) {
+    final controller = TextEditingController(text: product.stockQuantity.toString());
     return showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Update ${product.title} Stock'),
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Update ${product.title} stock'),
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'New Stock Quantity',
-          ),
+          decoration: const InputDecoration(labelText: 'New stock quantity'),
         ),
         actions: [
           TextButton(
             child: const Text('Cancel'),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
           ),
           TextButton(
             child: const Text('Update'),
             onPressed: () {
               final newQuantity = int.tryParse(controller.text);
               if (newQuantity != null && newQuantity >= 0) {
+                Navigator.pop(dialogContext);
                 _updateStock(product, newQuantity);
-                Navigator.pop(context);
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please enter a valid quantity'),
-                  ),
-                );
+                _msg('Please enter a valid quantity');
               }
             },
           ),
@@ -154,31 +236,26 @@ class _InventoryScreenState extends State<InventoryScreen> {
   void _showProductDetails(Product product) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(product.title),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('ID: ${product.id}'),
-            Text('Barcode: ${product.barcode}'),
-            Text('Price: \$${product.price.toStringAsFixed(2)}'),
+            Text('Barcode: ${product.barcode.isEmpty ? '-' : product.barcode}'),
+            Text('Price: ${tzs(product.price)}'),
             Text('Stock: ${product.stockQuantity}'),
-            // Add more product details as needed
+            if (product.description != null && product.description!.isNotEmpty)
+              Text('Notes: ${product.description}'),
           ],
         ),
         actions: [
           TextButton(
             child: const Text('Close'),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
           ),
         ],
       ),
     );
-  }
-
-  void _showAddProductDialog() {
-    // Implementation for adding new product
-    // You can create a new screen or dialog for this
   }
 }
