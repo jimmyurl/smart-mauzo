@@ -6,6 +6,8 @@ import 'screens/profile_screen.dart';
 import 'screens/sales_screen.dart';
 import 'screens/scan_screen.dart';
 import 'services/supabase_service.dart';
+import 'utils/login_required_view.dart';
+import 'utils/require_login.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -56,12 +58,20 @@ class _MainScreenState extends State<MainScreen> {
     ProfileScreen(),
   ];
 
+  static const _titles = ['Home', 'Products', 'Sales', 'Profile'];
+
+  /// Home is open to guests (browse-only). The other tabs need an account.
+  Widget _body() {
+    if (_currentIndex == 0 || isLoggedIn) return _screens[_currentIndex];
+    return LoginRequiredView(title: _titles[_currentIndex]);
+  }
+
   Widget _icon(String asset) => Image.asset(asset, width: 24, height: 24);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_currentIndex],
+      body: _body(),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         currentIndex: _currentIndex,
