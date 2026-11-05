@@ -20,6 +20,7 @@ dependencies:
   intl: ^0.17.0
   # Replaced charts_flutter with fl_chart (modern, actively maintained)
   fl_chart: ^0.66.0
+  webview_flutter: ^4.13.0
   
 
 dev_dependencies:
