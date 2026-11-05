@@ -10,8 +10,8 @@ class SupabaseService {
   //  The anon key is safe to ship in the app; data is protected by the
   //  row-level-security rules in smart_mauzo_schema.sql.
   // ===================================================================
-  static const String SUPABASE_URL = 'YOUR_SUPABASE_URL';
-  static const String SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+  static const String SUPABASE_URL = 'https://eiaxcjpgmrqsmmdevavs.supabase.co';
+  static const String SUPABASE_ANON_KEY = 'sb_publishable_jrCLORcW9NI-jg0WJXO5UQ_zZp9Jy6B';
 
   // Smart Mauzo tables live under the sm_ prefix (shared Supabase project).
   static const String _products = 'sm_products';
