@@ -1,11 +1,20 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../utils/phone_auth.dart';
 
 class ShopInfo {
   final String id;
   final String name;
   final String role; // 'owner' | 'cashier'
   final String? joinCode; // only present for owners
-  ShopInfo({required this.id, required this.name, required this.role, this.joinCode});
+  ShopInfo({
+    required this.id,
+    required this.name,
+    required this.role,
+    this.joinCode,
+    this.isSuperAdmin = false,
+  });
+
+  final bool isSuperAdmin;
 
   bool get isOwner => role == 'owner';
 
@@ -14,6 +23,7 @@ class ShopInfo {
         name: j['name'] as String,
         role: j['role'] as String,
         joinCode: j['join_code'] as String?,
+        isSuperAdmin: (j['is_super_admin'] as bool?) ?? false,
       );
 }
 
@@ -31,6 +41,23 @@ class ShopService {
 
   Future<AuthResponse> signUp(String email, String password) =>
       _c.auth.signUp(email: email, password: password);
+
+  /// Phone + password login. [phone] can be typed any normal way (0712..., +255712...).
+  /// Throws [FormatException] if the number is not valid.
+  Future<void> signInWithPhone(String phone, String password) {
+    final p = PhoneAuth.normalize(phone);
+    if (p == null) throw const FormatException('Enter a valid phone number');
+    return signIn(PhoneAuth.emailFor(p), password);
+  }
+
+  Future<AuthResponse> signUpWithPhone(String phone, String password) {
+    final p = PhoneAuth.normalize(phone);
+    if (p == null) throw const FormatException('Enter a valid phone number');
+    return signUp(PhoneAuth.emailFor(p), password);
+  }
+
+  /// The signed-in person's phone number (or email for older email accounts).
+  String? get phoneOrEmail => PhoneAuth.phoneFromEmail(email) ?? email;
 
   Future<void> signOut() => _c.auth.signOut();
 
