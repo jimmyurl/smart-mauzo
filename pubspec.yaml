@@ -18,7 +18,8 @@ dependencies:
   barcode_scanner: ^6.1.1
   uuid: ^4.5.1
   intl: ^0.17.0
-  charts_flutter: ^0.12.0
+  # Replaced charts_flutter with fl_chart (modern, actively maintained)
+  fl_chart: ^0.66.0
   
 
 dev_dependencies:
