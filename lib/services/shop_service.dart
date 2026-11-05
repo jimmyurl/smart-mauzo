@@ -36,12 +36,12 @@ class ShopService {
 
   /// The shop the signed-in user belongs to, or null if they have not created/joined one yet.
   Future<ShopInfo?> myShop() async {
-    final r = await _c.rpc('my_shop');
+    final r = await _c.rpc('sm_my_shop');
     if (r == null) return null;
     return ShopInfo.fromJson(Map<String, dynamic>.from(r as Map));
   }
 
-  Future<void> createShop(String name) => _c.rpc('create_shop', params: {'p_name': name});
+  Future<void> createShop(String name) => _c.rpc('sm_create_shop', params: {'p_name': name});
 
-  Future<void> joinShop(String code) => _c.rpc('join_shop', params: {'p_code': code});
+  Future<void> joinShop(String code) => _c.rpc('sm_join_shop', params: {'p_code': code});
 }
