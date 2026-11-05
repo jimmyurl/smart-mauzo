@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/shop_service.dart';
 
+/// Login / sign-up screen. Opened on top of the app (via requireLogin) when a
+/// guest tries to do something that needs an account.
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -32,6 +34,13 @@ class _AuthScreenState extends State<AuthScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
+  /// Close this screen (if it was opened as a prompt on top of the app).
+  void _close() {
+    if (mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
   String? _validateNewPassword(String? v) {
     if (v == null || v.isEmpty) return 'Please enter a password';
     if (v.length < 8) return 'Password must be at least 8 characters long';
@@ -47,12 +56,17 @@ class _AuthScreenState extends State<AuthScreen> {
       final email = _email.text.trim();
       if (_isLogin) {
         await _svc.signIn(email, _password.text);
-        // AuthGate reacts to the new session and swaps this screen out.
+        // Logged in: AuthGate reacts to the new session. Close this prompt.
+        _close();
       } else {
         final res = await _svc.signUp(email, _password.text);
         if (res.session == null) {
+          // Email confirmation is required before they can log in.
           _msg('Account created. Check your email to confirm it, then log in.');
           if (mounted) setState(() => _isLogin = true);
+        } else {
+          // Signed up and logged in straight away.
+          _close();
         }
       }
     } on AuthException catch (e) {
@@ -67,8 +81,22 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final blue = Colors.blue[900]!;
+    final canClose = Navigator.of(context).canPop();
+
     return Scaffold(
       backgroundColor: Colors.white,
+      // Close (X) button so guests can go back to browsing.
+      appBar: canClose
+          ? AppBar(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.white,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: _busy ? null : _close,
+              ),
+            )
+          : null,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
