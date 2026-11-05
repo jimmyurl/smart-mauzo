@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'screens/auth_screen.dart';
 import 'screens/shop_setup_screen.dart';
 import 'services/shop_service.dart';
 
-/// Decides what to show: login -> shop setup -> the real app.
+/// Decides what to show:
+///   guest (no session)      -> the app in guest mode (login is requested
+///                              only when they try to do something)
+///   logged in, no shop      -> shop setup
+///   logged in, has shop     -> the real app
 class AuthGate extends StatefulWidget {
   final Widget home;
   const AuthGate({super.key, required this.home});
@@ -47,7 +50,9 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (_session == null) return const AuthScreen();
+    // Guest: let them look around. Screens call requireLogin() when an
+    // action needs an account.
+    if (_session == null) return widget.home;
 
     return FutureBuilder<ShopInfo?>(
       future: _shop,
