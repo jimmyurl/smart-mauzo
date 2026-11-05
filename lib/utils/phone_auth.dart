@@ -6,7 +6,7 @@
 /// with phone + password. Requires "Confirm email" to be OFF in
 /// Supabase -> Authentication -> Providers -> Email.
 class PhoneAuth {
-  static const String _domain = 'phone.smartmauzo.app';
+  static const String _domain = 'smartflow.co.tz';
   static const String _defaultCountryCode = '255'; // Tanzania
 
   /// Returns digits-only international form (e.g. 255712345678), or null if
