@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:smart_mauzo/screens/sale_screen.dart';
+import 'package:smart_mauzo/screens/new_sale_screen.dart';
 import 'package:smart_mauzo/screens/inventory_screen.dart';
 import 'package:smart_mauzo/screens/report_screen.dart';
-import 'package:smart_mauzo/utils/require_login.dart';
 
 class MobileScannerPage extends StatelessWidget {
-  const MobileScannerPage({super.key});
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -30,10 +27,6 @@ class ScanScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Re-evaluated whenever this screen rebuilds. After login, AuthGate swaps
-    // the tree so this screen is rebuilt in logged-in mode.
-    final guest = !isLoggedIn;
-
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -49,7 +42,7 @@ class ScanScreen extends StatelessWidget {
         child: SafeArea(
           child: Column(
             children: [
-              _buildAppBar(context, guest),
+              _buildAppBar(),
               Expanded(
                 child: Container(
                   margin: const EdgeInsets.only(top: 30),
@@ -63,8 +56,7 @@ class ScanScreen extends StatelessWidget {
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
-                        if (guest) _buildGuestBanner(context),
-                        _buildWelcomeSection(guest),
+                        _buildWelcomeSection(),
                         _buildQuickActions(context),
                         _buildRecentTransactions(),
                       ],
@@ -76,29 +68,26 @@ class ScanScreen extends StatelessWidget {
           ),
         ),
       ),
-      // Scanning is allowed for guests (browse-only).
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _scanProduct(context),
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const NewSaleScreen()),
+        ),
         backgroundColor: Colors.blue[900],
-        foregroundColor: Colors.white,
         icon: const Icon(Icons.qr_code_scanner),
-        label: const Text('Scan Product'),
+        label: const Text('New Sale'),
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Actions
-  // ---------------------------------------------------------------------------
-
-  Future<void> _scanProduct(BuildContext context) async {
+  void _scanProduct(BuildContext context) async {
     try {
-      final result = await Navigator.push<String>(
+      final result = await Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const MobileScannerPage()),
+        MaterialPageRoute(
+          builder: (context) => MobileScannerPage(),
+        ),
       );
-
-      if (!context.mounted) return;
 
       if (result != null && result.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -110,29 +99,13 @@ class ScanScreen extends StatelessWidget {
         );
       }
     } catch (e) {
-      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
     }
   }
 
-  /// Runs [open] only if the user is logged in. Guests get the login prompt.
-  Future<void> _guarded(BuildContext context, VoidCallback open) async {
-    if (!await requireLogin(context)) return;
-    if (!context.mounted) return;
-    open();
-  }
-
-  void _push(BuildContext context, Widget screen) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
-  }
-
-  // ---------------------------------------------------------------------------
-  // UI
-  // ---------------------------------------------------------------------------
-
-  Widget _buildAppBar(BuildContext context, bool guest) {
+  Widget _buildAppBar() {
     return Padding(
       padding: const EdgeInsets.all(20.0),
       child: Row(
@@ -150,7 +123,7 @@ class ScanScreen extends StatelessWidget {
                 ),
               ),
               Text(
-                guest ? 'Welcome, guest!' : 'Welcome back!',
+                'Welcome back!',
                 style: TextStyle(
                   color: Colors.blue[100],
                   fontSize: 16,
@@ -158,15 +131,11 @@ class ScanScreen extends StatelessWidget {
               ),
             ],
           ),
-          // Guests: tapping the avatar opens login/signup.
-          GestureDetector(
-            onTap: guest ? () => requireLogin(context) : null,
-            child: CircleAvatar(
-              backgroundColor: Colors.blue[700],
-              child: Icon(
-                guest ? Icons.login : Icons.person,
-                color: Colors.white,
-              ),
+          CircleAvatar(
+            backgroundColor: Colors.blue[700],
+            child: const Icon(
+              Icons.person,
+              color: Colors.white,
             ),
           ),
         ],
@@ -174,42 +143,10 @@ class ScanScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildGuestBanner(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.blue[50],
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.blue[100]!),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.blue[900]),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'You are browsing as a guest. Log in to make sales and manage your shop.',
-                style: TextStyle(fontSize: 13),
-              ),
-            ),
-            const SizedBox(width: 8),
-            TextButton(
-              onPressed: () => requireLogin(context),
-              child: const Text('Log in'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWelcomeSection(bool guest) {
+  Widget _buildWelcomeSection() {
     return Container(
       padding: const EdgeInsets.all(20),
       child: Container(
-        width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -220,34 +157,15 @@ class ScanScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text(
-                  'Today\'s Sales',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (guest) ...[
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text(
-                      'Sample data',
-                      style: TextStyle(color: Colors.white, fontSize: 11),
-                    ),
-                  ),
-                ],
-              ],
+            const Text(
+              'Today\'s Sales',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 10),
-            // TODO: for logged-in users, replace with the real shop totals.
             const Text(
               'TZS 2,850,000',
               style: TextStyle(
@@ -319,7 +237,10 @@ class ScanScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               GestureDetector(
-                onTap: () => _guarded(context, () => _push(context, const SaleScreen())),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const NewSaleScreen()),
+                ),
                 child: _buildActionButton(
                   icon: Icons.shopping_cart,
                   label: 'New Sale',
@@ -327,7 +248,11 @@ class ScanScreen extends StatelessWidget {
                 ),
               ),
               GestureDetector(
-                onTap: () => _guarded(context, () => _push(context, const InventoryScreen())),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const InventoryScreen()),
+                ),
                 child: _buildActionButton(
                   icon: Icons.inventory,
                   label: 'Inventory',
@@ -335,22 +260,21 @@ class ScanScreen extends StatelessWidget {
                 ),
               ),
               GestureDetector(
-                onTap: () => _guarded(context, () => _push(context, const ReportsScreen())),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const ReportsScreen()),
+                ),
                 child: _buildActionButton(
                   icon: Icons.assessment,
                   label: 'Reports',
                   color: Colors.orange,
                 ),
               ),
-              GestureDetector(
-                onTap: () => _guarded(context, () {
-                  // TODO: open the settings screen once it exists.
-                }),
-                child: _buildActionButton(
-                  icon: Icons.settings,
-                  label: 'Settings',
-                  color: Colors.purple,
-                ),
+              _buildActionButton(
+                icon: Icons.settings,
+                label: 'Settings',
+                color: Colors.purple,
               ),
             ],
           ),
