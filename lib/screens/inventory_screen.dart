@@ -1,15 +1,30 @@
 import 'package:flutter/material.dart';
 import '../models/product.dart';
 import '../services/supabase_service.dart';
+import '../utils/category_utils.dart';
 import '../utils/money.dart';
+import '../widgets/category_chips.dart';
+import '../widgets/category_field.dart';
 import 'add_product_screen.dart';
 
-/// Products: list, search, update stock, and register new items.
+/// Products: grouped by category, searchable, update stock, register new items.
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key});
 
   @override
   State<InventoryScreen> createState() => _InventoryScreenState();
+}
+
+/// One line of the flattened list: either a category header or a product.
+class _Row {
+  final String? category;
+  final List<Product>? group;
+  final Product? product;
+  const _Row.header(this.category, this.group) : product = null;
+  const _Row.item(this.product)
+      : category = null,
+        group = null;
+  bool get isHeader => product == null;
 }
 
 class _InventoryScreenState extends State<InventoryScreen> {
@@ -19,6 +34,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
   final TextEditingController _search = TextEditingController();
   List<Product> _products = [];
   String _query = '';
+  String? _category; // null = All
+  final Set<String> _expanded = {};
   bool _isLoading = true;
   String? _error;
 
@@ -45,6 +62,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
       setState(() {
         _products = products;
         _isLoading = false;
+        if (_category != null && !products.any((p) => categoryOf(p) == _category)) {
+          _category = null;
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -55,12 +75,25 @@ class _InventoryScreenState extends State<InventoryScreen> {
     }
   }
 
-  List<Product> get _visible {
+  bool get _searching => _query.trim().isNotEmpty;
+
+  List<_Row> _buildRows() {
     final q = _query.trim().toLowerCase();
-    if (q.isEmpty) return _products;
-    return _products
-        .where((p) => p.title.toLowerCase().contains(q) || p.barcode.contains(q))
-        .toList();
+    Iterable<Product> list = _products;
+    if (_category != null) list = list.where((p) => categoryOf(p) == _category);
+    if (q.isNotEmpty) {
+      list = list.where((p) => p.title.toLowerCase().contains(q) || p.barcode.contains(q));
+    }
+    final rows = <_Row>[];
+    final showHeaders = _category == null;
+    final showAllItems = _searching || _category != null;
+    groupByCategory(list).forEach((cat, items) {
+      if (showHeaders) rows.add(_Row.header(cat, items));
+      if (showAllItems || _expanded.contains(cat)) {
+        rows.addAll(items.map((p) => _Row.item(p)));
+      }
+    });
+    return rows;
   }
 
   void _msg(String text, {bool ok = false}) {
@@ -81,6 +114,17 @@ class _InventoryScreenState extends State<InventoryScreen> {
     }
   }
 
+  Future<void> _setCategory(Product product, String category) async {
+    final ok = await _supabaseService.updateProductCategory(product.id, category);
+    if (!mounted) return;
+    if (ok) {
+      _msg('Category updated', ok: true);
+      _loadInventory();
+    } else {
+      _msg('Could not update category (only the shop owner can do this)');
+    }
+  }
+
   Future<void> _openAddProduct() async {
     await Navigator.push(
       context,
@@ -95,32 +139,71 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return Colors.green;
   }
 
+  void _toggleAll() {
+    final all = groupByCategory(_products).keys.toSet();
+    setState(() {
+      if (_expanded.length >= all.length) {
+        _expanded.clear();
+      } else {
+        _expanded
+          ..clear()
+          ..addAll(all);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final groups = groupByCategory(_products);
+    final counts = {for (final e in groups.entries) e.key: e.value.length};
     return Scaffold(
       appBar: AppBar(
         title: const Text('Products'),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [
+          if (_category == null && !_searching)
+            IconButton(
+              icon: Icon(_expanded.length >= groups.length
+                  ? Icons.unfold_less
+                  : Icons.unfold_more),
+              tooltip: 'Expand / collapse all',
+              onPressed: _toggleAll,
+            ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loadInventory),
         ],
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: TextField(
               controller: _search,
               decoration: InputDecoration(
                 hintText: 'Search by name or barcode',
                 prefixIcon: const Icon(Icons.search),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _search.clear();
+                          setState(() => _query = '');
+                        },
+                      ),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 isDense: true,
               ),
               onChanged: (v) => setState(() => _query = v),
             ),
           ),
+          if (!_isLoading && _products.isNotEmpty)
+            CategoryChips(
+              counts: counts,
+              total: _products.length,
+              selected: _category,
+              onSelected: (c) => setState(() => _category = c),
+            ),
           Expanded(child: _buildBody()),
         ],
       ),
@@ -151,8 +234,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
         ),
       );
     }
-    final items = _visible;
-    if (items.isEmpty) {
+    final rows = _buildRows();
+    if (rows.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -170,32 +253,74 @@ class _InventoryScreenState extends State<InventoryScreen> {
       onRefresh: _loadInventory,
       child: ListView.builder(
         padding: const EdgeInsets.only(bottom: 88),
-        itemCount: items.length,
+        itemCount: rows.length,
         itemBuilder: (context, index) {
-          final product = items[index];
-          final color = _stockColor(product.stockQuantity);
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: ListTile(
-              onTap: () => _showProductDetails(product),
-              leading: CircleAvatar(
-                backgroundColor: color.withOpacity(0.12),
-                child: Icon(Icons.inventory_2_outlined, color: color),
-              ),
-              title: Text(product.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(
-                '${tzs(product.price)}  •  ${product.stockQuantity} in stock'
-                '${product.stockQuantity <= 0 ? '  (out of stock)' : product.stockQuantity <= _lowStock ? '  (low)' : ''}',
-                style: TextStyle(color: color),
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.edit),
-                tooltip: 'Update stock',
-                onPressed: () => _showUpdateStockDialog(product),
+          final row = rows[index];
+          return row.isHeader ? _buildHeader(row) : _buildItem(row.product!);
+        },
+      ),
+    );
+  }
+
+  Widget _buildHeader(_Row row) {
+    final items = row.group!;
+    final low = items.where((p) => p.stockQuantity <= _lowStock).length;
+    final collapsible = !_searching;
+    final open = !collapsible || _expanded.contains(row.category);
+    return InkWell(
+      onTap: collapsible
+          ? () => setState(() {
+                if (!_expanded.remove(row.category)) _expanded.add(row.category!);
+              })
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+        child: Row(
+          children: [
+            Icon(Icons.folder_outlined, color: Colors.blue[900]),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                row.category!,
+                style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w700, color: Colors.blue[900]),
               ),
             ),
-          );
-        },
+            if (low > 0)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Text('$low low',
+                    style: const TextStyle(color: Colors.orange, fontSize: 12)),
+              ),
+            Text('${items.length} items', style: TextStyle(color: Colors.grey[600])),
+            if (collapsible) Icon(open ? Icons.expand_less : Icons.expand_more),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildItem(Product product) {
+    final color = _stockColor(product.stockQuantity);
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: ListTile(
+        onTap: () => _showProductDetails(product),
+        leading: CircleAvatar(
+          backgroundColor: color.withOpacity(0.12),
+          child: Icon(Icons.inventory_2_outlined, color: color),
+        ),
+        title: Text(product.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(
+          '${tzs(product.price)}  •  ${product.stockQuantity} in stock'
+          '${product.stockQuantity <= 0 ? '  (out of stock)' : product.stockQuantity <= _lowStock ? '  (low)' : ''}',
+          style: TextStyle(color: color),
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.edit),
+          tooltip: 'Update stock',
+          onPressed: () => _showUpdateStockDialog(product),
+        ),
       ),
     );
   }
@@ -233,6 +358,37 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
+  Future<void> _showChangeCategoryDialog(Product product) {
+    final current = categoryOf(product);
+    final controller = TextEditingController(text: current == kUncategorized ? '' : current);
+    final options = groupByCategory(_products).keys.where((k) => k != kUncategorized).toList();
+    return showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Category for ${product.title}'),
+        content: CategoryField(controller: controller, options: options),
+        actions: [
+          TextButton(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.pop(dialogContext),
+          ),
+          TextButton(
+            child: const Text('Save'),
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isEmpty) {
+                _msg('Please enter a category');
+                return;
+              }
+              Navigator.pop(dialogContext);
+              _setCategory(product, value);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showProductDetails(Product product) {
     showDialog(
       context: context,
@@ -242,6 +398,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text('Category: ${categoryOf(product)}'),
             Text('Barcode: ${product.barcode.isEmpty ? '-' : product.barcode}'),
             Text('Price: ${tzs(product.price)}'),
             Text('Stock: ${product.stockQuantity}'),
@@ -250,6 +407,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ],
         ),
         actions: [
+          TextButton(
+            child: const Text('Change category'),
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _showChangeCategoryDialog(product);
+            },
+          ),
           TextButton(
             child: const Text('Close'),
             onPressed: () => Navigator.pop(dialogContext),
