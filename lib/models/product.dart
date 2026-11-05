@@ -7,6 +7,7 @@ class Product {
   final String barcode;
   int stockQuantity;
   final DateTime createdAt;
+  final String? category; // NEW
 
   Product({
     required this.id,
@@ -17,6 +18,7 @@ class Product {
     required this.barcode,
     required this.stockQuantity,
     required this.createdAt,
+    this.category, // NEW
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,7 @@ class Product {
       barcode: json['barcode'] ?? '',
       stockQuantity: json['stock_quantity'] ?? 0,
       createdAt: DateTime.parse(json['created_at']),
+      category: json['category'], // NEW
     );
   }
 
@@ -42,6 +45,7 @@ class Product {
       'barcode': barcode,
       'stock_quantity': stockQuantity,
       'created_at': createdAt.toIso8601String(),
+      'category': category, // NEW
     };
   }
 }
