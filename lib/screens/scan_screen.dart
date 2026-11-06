@@ -428,13 +428,20 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
             const SizedBox(height: 14),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                _pill('$orders orders'),
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      _pill('$orders orders'),
+                      _pill('$items items'),
+                      _pill('$change vs yesterday'),
+                    ],
+                  ),
+                ),
                 const SizedBox(width: 8),
-                _pill('$items items'),
-                const SizedBox(width: 8),
-                _pill('$change vs yesterday'),
-                const Spacer(),
                 GestureDetector(
                   onTap: () => _openGuarded(const SalesScreen()),
                   child: const CircleAvatar(
