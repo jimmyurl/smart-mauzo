@@ -6,6 +6,7 @@ import '../utils/money.dart';
 import '../widgets/category_chips.dart';
 import '../widgets/category_field.dart';
 import 'add_product_screen.dart';
+import 'restock_screen.dart';
 
 /// Products: grouped by category, searchable, update stock, register new items.
 class InventoryScreen extends StatefulWidget {
@@ -122,6 +123,21 @@ class _InventoryScreenState extends State<InventoryScreen> {
       _loadInventory();
     } else {
       _msg('Could not update category (only the shop owner can do this)');
+    }
+  }
+
+  Future<void> _openRestock(Product product) async {
+    final suppliers = await _supabaseService.getSupplierNames();
+    if (!mounted) return;
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RestockScreen(product: product, knownSuppliers: suppliers),
+      ),
+    );
+    if (saved == true) {
+      _msg('Stock added', ok: true);
+      _loadInventory();
     }
   }
 
@@ -316,10 +332,20 @@ class _InventoryScreenState extends State<InventoryScreen> {
           '${product.stockQuantity <= 0 ? '  (out of stock)' : product.stockQuantity <= _lowStock ? '  (low)' : ''}',
           style: TextStyle(color: color),
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.edit),
-          tooltip: 'Update stock',
-          onPressed: () => _showUpdateStockDialog(product),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.add_box_outlined),
+              tooltip: 'Add stock from supplier',
+              onPressed: () => _openRestock(product),
+            ),
+            IconButton(
+              icon: const Icon(Icons.edit),
+              tooltip: 'Correct stock count',
+              onPressed: () => _showUpdateStockDialog(product),
+            ),
+          ],
         ),
       ),
     );
@@ -400,13 +426,22 @@ class _InventoryScreenState extends State<InventoryScreen> {
           children: [
             Text('Category: ${categoryOf(product)}'),
             Text('Barcode: ${product.barcode.isEmpty ? '-' : product.barcode}'),
-            Text('Price: ${tzs(product.price)}'),
+            Text('Buying price: ${tzs(product.buyingPrice)}'),
+            Text('Selling price: ${tzs(product.price)}'),
+            Text('Profit per item: ${tzs(product.price - product.buyingPrice)}'),
             Text('Stock: ${product.stockQuantity}'),
             if (product.description != null && product.description!.isNotEmpty)
               Text('Notes: ${product.description}'),
           ],
         ),
         actions: [
+          TextButton(
+            child: const Text('Add stock'),
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _openRestock(product);
+            },
+          ),
           TextButton(
             child: const Text('Change category'),
             onPressed: () {
