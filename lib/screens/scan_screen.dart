@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../models/product.dart';
 import '../models/sale.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
@@ -8,6 +9,7 @@ import '../utils/require_login.dart';
 import 'inventory_screen.dart';
 import 'new_sale_screen.dart';
 import 'report_screen.dart';
+import 'sales_screen.dart';
 
 class MobileScannerPage extends StatelessWidget {
   const MobileScannerPage({super.key});
@@ -47,6 +49,10 @@ class _ScanScreenState extends State<ScanScreen> {
   final SupabaseService _supabaseService = SupabaseService();
 
   List<Sale> _sales = [];
+  List<Product> _products = [];
+  int _tab = 0; // 0 = Recent sales, 1 = Low stock
+  bool _hideAmount = false;
+  static const int _lowStock = 5;
   bool _isLoading = false;
   String _errorMessage = '';
 
@@ -65,9 +71,14 @@ class _ScanScreenState extends State<ScanScreen> {
   Future<void> _fetchSales() async {
     try {
       final sales = await _supabaseService.fetchSales();
+      List<Product> products = _products;
+      try {
+        products = await _supabaseService.getProducts();
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _sales = sales;
+        _products = products;
         _errorMessage = '';
         _isLoading = false;
       });
@@ -233,7 +244,7 @@ class _ScanScreenState extends State<ScanScreen> {
           sample: true,
         ),
         _buildQuickActions(),
-        _buildRecentHeader(sample: true),
+        _buildTabs(sample: true),
         _sampleTransactions(),
         const SizedBox(height: 90),
       ],
@@ -279,8 +290,8 @@ class _ScanScreenState extends State<ScanScreen> {
           sample: false,
         ),
         _buildQuickActions(),
-        _buildRecentHeader(sample: false),
-        _recentTransactions(),
+        _buildTabs(sample: false),
+        if (_tab == 0) _recentTransactions() else _lowStockList(),
         const SizedBox(height: 90),
       ],
     );
@@ -370,71 +381,85 @@ class _ScanScreenState extends State<ScanScreen> {
     required String change,
     required bool sample,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(20),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.purple[400]!, Colors.purple[600]!],
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1565C0), Color(0xFF4FC3F7)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Text(
-                  'Today\'s Sales',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                const Text("Today's sales",
+                    style: TextStyle(color: Colors.white70, fontSize: 13)),
+                if (sample) ...[
+                  const SizedBox(width: 8),
+                  _pill('Sample'),
+                ],
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => setState(() => _hideAmount = !_hideAmount),
+                  child: Icon(
+                    _hideAmount ? Icons.visibility_off : Icons.visibility,
+                    color: Colors.white70,
+                    size: 20,
                   ),
                 ),
-                if (sample) ...[
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text(
-                      'Sample data',
-                      style: TextStyle(color: Colors.white, fontSize: 11),
-                    ),
-                  ),
-                ],
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text(
-                amount,
+                _hideAmount ? 'TZS ••••••' : amount,
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                ),
+                    color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildSalesStat('Orders', orders),
-                _buildSalesStat('Items Sold', items),
-                _buildSalesStat('vs Yesterday', change),
+                _pill('$orders orders'),
+                const SizedBox(width: 8),
+                _pill('$items items'),
+                const SizedBox(width: 8),
+                _pill('$change vs yesterday'),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => _openGuarded(const SalesScreen()),
+                  child: const CircleAvatar(
+                    radius: 15,
+                    backgroundColor: Colors.white,
+                    child: Icon(Icons.arrow_forward,
+                        size: 18, color: Color(0xFF1565C0)),
+                  ),
+                ),
               ],
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _pill(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.22),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 11)),
     );
   }
 
@@ -470,59 +495,114 @@ class _ScanScreenState extends State<ScanScreen> {
 
   Widget _buildQuickActions() {
     return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Quick Actions',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _action(Icons.shopping_cart_outlined, 'New sale', _openNewSale),
+            _action(Icons.inventory_2_outlined, 'Products',
+                () => _openGuarded(const InventoryScreen())),
+            _action(Icons.calendar_month_outlined, 'Sales',
+                () => _openGuarded(const SalesScreen())),
+            _action(Icons.assessment_outlined, 'Reports',
+                () => _openGuarded(const ReportsScreen())),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _action(IconData icon, String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 26, color: Colors.blue[900]),
+            const SizedBox(height: 6),
+            Text(label,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// "Recent | Low stock" tabs, like the Tokens / NFT / DeFi row in the mockup.
+  Widget _buildTabs({required bool sample}) {
+    final low = _products.where((p) => p.stockQuantity <= _lowStock).length;
+    Widget tab(int i, String label) {
+      final on = _tab == i;
+      return Padding(
+        padding: const EdgeInsets.only(right: 22),
+        child: GestureDetector(
+          onTap: sample ? null : () => setState(() => _tab = i),
+          child: Container(
+            padding: const EdgeInsets.only(bottom: 6),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                    color: on ? Colors.blue[900]! : Colors.transparent, width: 2),
+              ),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: on ? FontWeight.bold : FontWeight.w500,
+                color: on ? Colors.blue[900] : Colors.grey[600],
+              ),
             ),
           ),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              GestureDetector(
-                onTap: _openNewSale,
-                child: _buildActionButton(
-                  icon: Icons.shopping_cart,
-                  label: 'New Sale',
-                  color: Colors.blue,
-                ),
-              ),
-              GestureDetector(
-                onTap: () => _openGuarded(const InventoryScreen()),
-                child: _buildActionButton(
-                  icon: Icons.inventory,
-                  label: 'Inventory',
-                  color: Colors.green,
-                ),
-              ),
-              GestureDetector(
-                onTap: () => _openGuarded(const ReportsScreen()),
-                child: _buildActionButton(
-                  icon: Icons.assessment,
-                  label: 'Reports',
-                  color: Colors.orange,
-                ),
-              ),
-              GestureDetector(
-                onTap: () async {
-                  if (!await requireLogin(context)) return;
-                  // TODO: open the settings screen once it exists.
-                },
-                child: _buildActionButton(
-                  icon: Icons.settings,
-                  label: 'Settings',
-                  color: Colors.purple,
-                ),
-              ),
-            ],
-          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+      child: Row(
+        children: [
+          tab(0, 'Recent sales'),
+          tab(1, low > 0 ? 'Low stock ($low)' : 'Low stock'),
         ],
+      ),
+    );
+  }
+
+  Widget _lowStockList() {
+    final low = _products.where((p) => p.stockQuantity <= _lowStock).toList()
+      ..sort((a, b) => a.stockQuantity.compareTo(b.stockQuantity));
+    if (low.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+        child: Text('All items are well stocked.',
+            style: TextStyle(color: Colors.grey[600])),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: low.take(10).map((p) {
+          final out = p.stockQuantity <= 0;
+          final c = out ? Colors.red : Colors.orange;
+          return _transactionTile(
+            icon: Icons.inventory_2_outlined,
+            iconColor: c,
+            title: p.title,
+            subtitle: out ? 'Out of stock' : 'Low stock',
+            amount: '${p.stockQuantity} left',
+            time: tzs(p.price),
+          );
+        }).toList(),
       ),
     );
   }
