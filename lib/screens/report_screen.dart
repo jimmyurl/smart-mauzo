@@ -5,11 +5,16 @@ import '../models/sale.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
 
-enum _Period { today, week, month, year }
+enum _Period { today, week, month, year, custom }
 
-/// Reports: pick a period, see revenue compared with the previous period,
-/// a sales chart, payment split and best sellers (Overview tab), plus every
-/// transaction in that period (Transactions tab).
+/// Reports: pick a period (or any date / date range from the calendar), see
+/// revenue AND profit compared with the previous period, a sales/profit chart,
+/// payment split and best sellers (Overview tab), plus every transaction in
+/// that period (Transactions tab).
+///
+/// Profit is calculated from `Sale.buyingPrice` (buying price per unit, saved on
+/// the sale at the moment it was made). Sales without a buying price are left
+/// out of profit so old data does not inflate the margin.
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
 
@@ -21,6 +26,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   static const _navy = Color(0xFF0D47A1);
   static const _cashColor = Color(0xFF2E7D32);
   static const _mobileColor = Color(0xFF1565C0);
+  static const _profitColor = Color(0xFF2E7D32);
+  static const _lossColor = Color(0xFFC62828);
 
   final SupabaseService _supabaseService = SupabaseService();
 
@@ -28,6 +35,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
   bool _isLoading = true;
   String _errorMessage = '';
   _Period _period = _Period.today;
+  DateTimeRange? _customRange; // set when the user picks dates from the calendar
+  bool _showProfit = false; // chart: sales vs profit
+  bool _sellersByProfit = false; // best sellers: by sales vs by profit
   int? _selectedBar;
 
   @override
@@ -63,15 +73,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
     _fetchSales();
   }
 
+  // ------------------------------------------------------------------ profit
+  /// A sale only counts towards profit when its buying price is known.
+  bool _hasCost(Sale s) => s.buyingPrice > 0;
+  double _costOf(Sale s) => s.buyingPrice * s.quantity;
+  double _profitOf(Sale s) => _hasCost(s) ? s.total - _costOf(s) : 0;
+
+  _Fin _fin(Iterable<Sale> sales) {
+    final f = _Fin();
+    for (final s in sales) {
+      if (_hasCost(s)) {
+        f.revenue += s.total;
+        f.cost += _costOf(s);
+        f.known++;
+      } else {
+        f.missing++;
+      }
+    }
+    return f;
+  }
+
   // ----------------------------------------------------------------- periods
   DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   DateTime _daysAgo(int n) {
     final t = DateTime.now();
     return DateTime(t.year, t.month, t.day - n);
   }
 
-  /// Start of the selected period.
+  DateTimeRange get _range {
+    final today = _startOfDay(DateTime.now());
+    return _customRange ?? DateTimeRange(start: today, end: today);
+  }
+
+  /// Number of days in the selected period.
+  int get _periodDays => (_end.difference(_start).inHours / 24).round();
+
+  /// Start of the selected period (inclusive).
   DateTime get _start {
     final now = DateTime.now();
     switch (_period) {
@@ -83,7 +124,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
         return _daysAgo(29);
       case _Period.year:
         return DateTime(now.year, now.month - 11, 1);
+      case _Period.custom:
+        return _startOfDay(_range.start);
     }
+  }
+
+  /// End of the selected period (exclusive: midnight after the last day).
+  DateTime get _end {
+    final d = _period == _Period.custom ? _range.end : DateTime.now();
+    return DateTime(d.year, d.month, d.day + 1);
   }
 
   /// Start of the period just before the selected one (same length).
@@ -98,7 +147,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
         return _daysAgo(59);
       case _Period.year:
         return DateTime(now.year, now.month - 23, 1);
+      case _Period.custom:
+        final s = _start;
+        return DateTime(s.year, s.month, s.day - _periodDays);
     }
+  }
+
+  String _rangeText({bool short = false}) {
+    final r = _range;
+    if (_sameDay(r.start, r.end)) {
+      return DateFormat(short ? 'd MMM yyyy' : 'EEE, d MMM yyyy').format(r.start);
+    }
+    final sameYear = r.start.year == r.end.year;
+    final from = DateFormat(sameYear ? 'd MMM' : 'd MMM yyyy').format(r.start);
+    final to = DateFormat('d MMM yyyy').format(r.end);
+    return '$from – $to';
   }
 
   String get _periodLabel {
@@ -111,6 +174,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
         return 'Last 30 days';
       case _Period.year:
         return 'Last 12 months';
+      case _Period.custom:
+        return _rangeText();
     }
   }
 
@@ -124,28 +189,55 @@ class _ReportsScreenState extends State<ReportsScreen> {
         return 'the previous 30 days';
       case _Period.year:
         return 'the previous 12 months';
+      case _Period.custom:
+        final n = _periodDays;
+        return n <= 1 ? 'the previous day' : 'the previous $n days';
     }
   }
 
-  List<Sale> get _sales {
-    final start = _start;
-    return _allSales.where((s) => !s.timestamp.toLocal().isBefore(start)).toList();
-  }
-
-  double get _previousRevenue {
-    final start = _start;
-    final prevStart = _prevStart;
+  List<Sale> _between(DateTime from, DateTime to) {
     return _allSales.where((s) {
       final t = s.timestamp.toLocal();
-      return !t.isBefore(prevStart) && t.isBefore(start);
-    }).fold<double>(0, (sum, s) => sum + s.total);
+      return !t.isBefore(from) && t.isBefore(to);
+    }).toList();
   }
+
+  List<Sale> get _sales => _between(_start, _end);
+  List<Sale> get _previousSales => _between(_prevStart, _start);
 
   String _dayLabel(DateTime day) {
     final diff = _startOfDay(DateTime.now()).difference(day).inDays;
     if (diff == 0) return 'Today';
     if (diff == 1) return 'Yesterday';
     return DateFormat('EEE, d MMM yyyy').format(day);
+  }
+
+  // ---------------------------------------------------------------- calendar
+  /// Opens the calendar. Tap one day twice for a single date, or tap a start
+  /// and an end day for a range.
+  Future<void> _pickDates() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: today,
+      initialDateRange: _customRange,
+      helpText: 'Pick a date or a range',
+      saveText: 'Apply',
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: Theme.of(ctx).colorScheme.copyWith(primary: _navy),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _customRange = picked;
+      _period = _Period.custom;
+      _selectedBar = null;
+    });
   }
 
   // ------------------------------------------------------------------- build
@@ -160,6 +252,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
           backgroundColor: _navy,
           foregroundColor: Colors.white,
           actions: [
+            IconButton(
+              icon: const Icon(Icons.calendar_month),
+              tooltip: 'Pick date',
+              onPressed: _pickDates,
+            ),
             IconButton(icon: const Icon(Icons.refresh), onPressed: _retry),
           ],
           bottom: const TabBar(
@@ -226,30 +323,47 @@ class _ReportsScreenState extends State<ReportsScreen> {
       _Period.month: 'Month',
       _Period.year: 'Year',
     };
+    final customSelected = _period == _Period.custom;
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: _Period.values.map((p) {
-          final selected = p == _period;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label: Text(labels[p]!),
-              selected: selected,
-              showCheckmark: false,
-              selectedColor: _navy,
-              backgroundColor: Colors.white,
-              labelStyle: TextStyle(
-                color: selected ? Colors.white : Colors.black87,
-                fontWeight: FontWeight.w600,
+        children: [
+          for (final e in labels.entries)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text(e.value),
+                selected: e.key == _period,
+                showCheckmark: false,
+                selectedColor: _navy,
+                backgroundColor: Colors.white,
+                labelStyle: TextStyle(
+                  color: e.key == _period ? Colors.white : Colors.black87,
+                  fontWeight: FontWeight.w600,
+                ),
+                onSelected: (_) => setState(() {
+                  _period = e.key;
+                  _selectedBar = null;
+                }),
               ),
-              onSelected: (_) => setState(() {
-                _period = p;
-                _selectedBar = null;
-              }),
             ),
-          );
-        }).toList(),
+          // Calendar chip: opens the date picker; shows the chosen dates.
+          ChoiceChip(
+            avatar: Icon(Icons.calendar_month,
+                size: 18, color: customSelected ? Colors.white : _navy),
+            label: Text(customSelected ? _rangeText(short: true) : 'Pick date'),
+            selected: customSelected,
+            showCheckmark: false,
+            selectedColor: _navy,
+            backgroundColor: Colors.white,
+            labelStyle: TextStyle(
+              color: customSelected ? Colors.white : Colors.black87,
+              fontWeight: FontWeight.w600,
+            ),
+            onSelected: (_) => _pickDates(),
+          ),
+        ],
       ),
     );
   }
@@ -286,6 +400,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
           else ...[
             _summaryCard(sales),
             const SizedBox(height: 12),
+            _profitCard(sales),
+            const SizedBox(height: 12),
             _chartCard(sales),
             const SizedBox(height: 12),
             _paymentSplit(sales),
@@ -302,7 +418,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final revenue = sales.fold<double>(0, (s, e) => s + e.total);
     final items = sales.fold<int>(0, (s, e) => s + e.quantity);
     final average = revenue / sales.length;
-    final prev = _previousRevenue;
+    final prev = _previousSales.fold<double>(0, (s, e) => s + e.total);
 
     Widget comparison;
     if (prev > 0) {
@@ -386,68 +502,234 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  // -------------------------------------------------------------- profit card
+  Widget _profitCard(List<Sale> sales) {
+    final fin = _fin(sales);
+
+    if (fin.known == 0) {
+      return _card(
+        title: 'Profit',
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.grey[500]),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'No buying prices were recorded for these sales. Add a buying '
+                'price to your items to see profit and margin here.',
+                style: TextStyle(color: Colors.grey[700], fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final profit = fin.profit;
+    final loss = profit < 0;
+    final color = loss ? _lossColor : _profitColor;
+
+    final prev = _fin(_previousSales);
+    Widget? compare;
+    if (prev.known > 0 && prev.profit > 0) {
+      final pct = ((profit - prev.profit) / prev.profit * 100).round();
+      compare = Text(
+        '${pct >= 0 ? '+' : ''}$pct% compared with $_previousLabel',
+        style: TextStyle(color: Colors.grey[700], fontSize: 13),
+      );
+    }
+
+    final costFlex = (fin.cost / fin.revenue * 1000).round().clamp(1, 999).toInt();
+
+    return _card(
+      title: 'Profit',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    tzs(profit),
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${fin.margin.toStringAsFixed(1)}% margin',
+                  style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          if (compare != null) ...[const SizedBox(height: 4), compare],
+          const SizedBox(height: 14),
+          if (!loss)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: SizedBox(
+                height: 10,
+                child: Row(
+                  children: [
+                    Expanded(flex: costFlex, child: Container(color: Colors.grey[400])),
+                    Expanded(flex: 1000 - costFlex, child: Container(color: _profitColor)),
+                  ],
+                ),
+              ),
+            ),
+          if (!loss) const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(child: _miniStat('Revenue', tzs(fin.revenue), Colors.black87)),
+              Expanded(child: _miniStat('Buying cost', tzs(fin.cost), Colors.grey[700]!)),
+            ],
+          ),
+          if (fin.missing > 0) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Profit only counts sales that have a buying price. '
+              '${fin.missing} sale${fin.missing == 1 ? '' : 's'} without one '
+              '${fin.missing == 1 ? 'is' : 'are'} left out.',
+              style: TextStyle(color: Colors.orange[800], fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _miniStat(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+        const SizedBox(height: 2),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(value,
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: color)),
+        ),
+      ],
+    );
+  }
+
   // -------------------------------------------------------------------- chart
-  List<_Bar> _bars(List<Sale> sales) {
+  List<_Bar> _bars(List<Sale> sales, bool profitMode) {
     final now = DateTime.now();
+    double value(Sale s) => profitMode ? _profitOf(s) : s.total;
+
+    List<_Bar> hourly() {
+      final byHour = <int, double>{};
+      for (final s in sales) {
+        final h = s.timestamp.toLocal().hour;
+        byHour[h] = (byHour[h] ?? 0) + value(s);
+      }
+      return List.generate(24, (h) {
+        final from = '${h.toString().padLeft(2, '0')}:00';
+        final to = '${((h + 1) % 24).toString().padLeft(2, '0')}:00';
+        return _Bar(
+          label: from,
+          fullLabel: '$from - $to',
+          value: byHour[h] ?? 0,
+          showLabel: h % 6 == 0,
+        );
+      });
+    }
+
+    List<_Bar> daily(DateTime first, int days) {
+      final byDay = <DateTime, double>{};
+      for (final s in sales) {
+        final d = _startOfDay(s.timestamp.toLocal());
+        byDay[d] = (byDay[d] ?? 0) + value(s);
+      }
+      final step = days <= 7 ? 1 : (days / 5).ceil();
+      return List.generate(days, (i) {
+        final day = DateTime(first.year, first.month, first.day + i);
+        return _Bar(
+          label: days <= 7 ? DateFormat('E').format(day) : DateFormat('d MMM').format(day),
+          fullLabel: DateFormat('EEE, d MMM').format(day),
+          value: byDay[day] ?? 0,
+          showLabel: i % step == 0,
+        );
+      });
+    }
+
+    List<_Bar> monthly(DateTime first, int count) {
+      final byMonth = <DateTime, double>{};
+      for (final s in sales) {
+        final t = s.timestamp.toLocal();
+        final key = DateTime(t.year, t.month, 1);
+        byMonth[key] = (byMonth[key] ?? 0) + value(s);
+      }
+      final step = count <= 12 ? 1 : (count / 6).ceil();
+      return List.generate(count, (i) {
+        final month = DateTime(first.year, first.month + i, 1);
+        return _Bar(
+          label: DateFormat(count > 12 ? 'MMM yy' : 'MMM').format(month),
+          fullLabel: DateFormat('MMMM yyyy').format(month),
+          value: byMonth[month] ?? 0,
+          showLabel: i % step == 0,
+        );
+      });
+    }
 
     switch (_period) {
       case _Period.today:
-        final byHour = <int, double>{};
-        for (final s in sales) {
-          final h = s.timestamp.toLocal().hour;
-          byHour[h] = (byHour[h] ?? 0) + s.total;
-        }
-        return List.generate(24, (h) {
-          final from = '${h.toString().padLeft(2, '0')}:00';
-          final to = '${((h + 1) % 24).toString().padLeft(2, '0')}:00';
-          return _Bar(
-            label: from,
-            fullLabel: '$from - $to',
-            value: byHour[h] ?? 0,
-            showLabel: h % 6 == 0,
-          );
-        });
-
+        return hourly();
       case _Period.week:
+        return daily(_daysAgo(6), 7);
       case _Period.month:
-        final days = _period == _Period.week ? 7 : 30;
-        final byDay = <DateTime, double>{};
-        for (final s in sales) {
-          final d = _startOfDay(s.timestamp.toLocal());
-          byDay[d] = (byDay[d] ?? 0) + s.total;
-        }
-        return List.generate(days, (i) {
-          final ago = days - 1 - i;
-          final day = _daysAgo(ago);
-          return _Bar(
-            label: days == 7 ? DateFormat('E').format(day) : DateFormat('d MMM').format(day),
-            fullLabel: DateFormat('EEE, d MMM').format(day),
-            value: byDay[day] ?? 0,
-            showLabel: days == 7 ? true : ago % 7 == 0,
-          );
-        });
-
+        return daily(_daysAgo(29), 30);
       case _Period.year:
-        final byMonth = <DateTime, double>{};
-        for (final s in sales) {
-          final t = s.timestamp.toLocal();
-          final key = DateTime(t.year, t.month, 1);
-          byMonth[key] = (byMonth[key] ?? 0) + s.total;
-        }
-        return List.generate(12, (i) {
-          final month = DateTime(now.year, now.month - 11 + i, 1);
-          return _Bar(
-            label: DateFormat('MMM').format(month),
-            fullLabel: DateFormat('MMMM yyyy').format(month),
-            value: byMonth[month] ?? 0,
-            showLabel: true,
-          );
-        });
+        return monthly(DateTime(now.year, now.month - 11, 1), 12);
+      case _Period.custom:
+        final days = _periodDays;
+        if (days <= 1) return hourly();
+        if (days <= 31) return daily(_start, days);
+        final last = DateTime(_end.year, _end.month, _end.day - 1);
+        final count = (last.year - _start.year) * 12 + last.month - _start.month + 1;
+        return monthly(DateTime(_start.year, _start.month, 1), count);
     }
   }
 
+  Widget _toggle({
+    required bool value,
+    required String off,
+    required String on,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return SegmentedButton<bool>(
+      showSelectedIcon: false,
+      style: const ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      segments: [
+        ButtonSegment(value: false, label: Text(off)),
+        ButtonSegment(value: true, label: Text(on)),
+      ],
+      selected: {value},
+      onSelectionChanged: (s) => onChanged(s.first),
+    );
+  }
+
   Widget _chartCard(List<Sale> sales) {
-    final bars = _bars(sales);
+    final hasCost = sales.any(_hasCost);
+    final profitMode = _showProfit && hasCost;
+    final base = profitMode ? _profitColor : _navy;
+
+    final bars = _bars(sales, profitMode);
     final maxValue = bars.fold<double>(0, (m, b) => math.max(m, b.value));
     final maxIndex = bars.indexWhere((b) => b.value == maxValue);
     const chartHeight = 140.0;
@@ -463,13 +745,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
     } else if (maxValue > 0) {
       caption = 'Best: ${bars[maxIndex].fullLabel}  •  ${tzs(maxValue)}';
     } else {
-      caption = 'No sales to chart';
+      caption = profitMode ? 'No profit to chart' : 'No sales to chart';
     }
 
     final thin = bars.length > 12;
 
     return _card(
-      title: 'Sales over time',
+      title: profitMode ? 'Profit over time' : 'Sales over time',
+      trailing: hasCost
+          ? _toggle(
+              value: profitMode,
+              off: 'Sales',
+              on: 'Profit',
+              onChanged: (v) => setState(() {
+                _showProfit = v;
+                _selectedBar = null;
+              }),
+            )
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -494,7 +787,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                 ? 3
                                 : math.max(3, bars[i].value / maxValue * chartHeight),
                             decoration: BoxDecoration(
-                              color: i == highlight ? _navy : _navy.withOpacity(0.3),
+                              color: i == highlight ? base : base.withOpacity(0.3),
                               borderRadius:
                                   const BorderRadius.vertical(top: Radius.circular(4)),
                             ),
@@ -613,18 +906,51 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   // ------------------------------------------------------------ top products
   Widget _topProducts(List<Sale> sales) {
+    final hasCost = sales.any(_hasCost);
+    final byProfit = _sellersByProfit && hasCost;
+
     final byProduct = <String, _ProductTotal>{};
     for (final s in sales) {
       final t = byProduct.putIfAbsent(s.productId, () => _ProductTotal(s.productTitle));
       t.revenue += s.total;
       t.quantity += s.quantity;
+      if (_hasCost(s)) {
+        t.knownRevenue += s.total;
+        t.cost += _costOf(s);
+      }
     }
-    final top = byProduct.values.toList()..sort((a, b) => b.revenue.compareTo(a.revenue));
+
+    double metric(_ProductTotal p) => byProfit ? p.profit : p.revenue;
+    final top = byProduct.values.toList()..sort((a, b) => metric(b).compareTo(metric(a)));
     final shown = top.take(5).toList();
-    final maxRevenue = shown.first.revenue;
+    final maxValue = metric(shown.first);
+    final barColor = byProfit ? _profitColor : _navy;
+
+    String subtitle(_ProductTotal p) {
+      var text = '${p.quantity} sold';
+      if (byProfit) {
+        text += '  •  Sales ${tzs(p.revenue)}';
+        text += p.hasCost
+            ? '  •  ${p.margin.toStringAsFixed(0)}% margin'
+            : '  •  No buying price';
+      } else if (hasCost) {
+        text += p.hasCost
+            ? '  •  Profit ${tzs(p.profit)} (${p.margin.toStringAsFixed(0)}%)'
+            : '  •  No buying price';
+      }
+      return text;
+    }
 
     return _card(
-      title: 'Best sellers',
+      title: byProfit ? 'Most profitable' : 'Best sellers',
+      trailing: hasCost
+          ? _toggle(
+              value: byProfit,
+              off: 'Sales',
+              on: 'Profit',
+              onChanged: (v) => setState(() => _sellersByProfit = v),
+            )
+          : null,
       child: Column(
         children: [
           for (var i = 0; i < shown.length; i++)
@@ -642,7 +968,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             style: const TextStyle(fontWeight: FontWeight.w500)),
                       ),
                       const SizedBox(width: 8),
-                      Text(tzs(shown[i].revenue),
+                      Text(tzs(metric(shown[i])),
                           style: const TextStyle(fontWeight: FontWeight.bold)),
                     ],
                   ),
@@ -650,14 +976,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
-                      value: maxRevenue <= 0 ? 0 : shown[i].revenue / maxRevenue,
+                      value: maxValue <= 0
+                          ? 0
+                          : (metric(shown[i]) / maxValue).clamp(0.0, 1.0).toDouble(),
                       minHeight: 6,
                       backgroundColor: Colors.grey[200],
-                      color: _navy,
+                      color: barColor,
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text('${shown[i].quantity} sold',
+                  Text(subtitle(shown[i]),
                       style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                 ],
               ),
@@ -702,16 +1030,29 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final widgets = <Widget>[];
     days.forEach((day, list) {
       final dayTotal = list.fold<double>(0, (s, e) => s + e.total);
+      final fin = _fin(list);
       widgets.add(Padding(
         padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: Text(_dayLabel(day),
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
             ),
-            Text('${list.length} sale${list.length == 1 ? '' : 's'}  •  ${tzs(dayTotal)}',
-                style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('${list.length} sale${list.length == 1 ? '' : 's'}  •  ${tzs(dayTotal)}',
+                    style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+                if (fin.known > 0)
+                  Text('Profit ${tzs(fin.profit)}',
+                      style: TextStyle(
+                          color: fin.profit < 0 ? _lossColor : _profitColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+              ],
+            ),
           ],
         ),
       ));
@@ -737,6 +1078,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _saleTile(Sale sale) {
     final color = sale.isMobile ? _mobileColor : _cashColor;
+    final profit = _profitOf(sale);
     return ListTile(
       onTap: () => _showDetails(sale),
       leading: CircleAvatar(
@@ -749,7 +1091,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
         '${DateFormat('HH:mm').format(sale.timestamp.toLocal())}  •  '
         '${sale.isMobile ? 'Mobile/Card' : 'Cash'}',
       ),
-      trailing: Text(tzs(sale.total), style: const TextStyle(fontWeight: FontWeight.bold)),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(tzs(sale.total), style: const TextStyle(fontWeight: FontWeight.bold)),
+          if (_hasCost(sale))
+            Text('+${tzs(profit)}',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: profit < 0 ? _lossColor : _profitColor)),
+        ],
+      ),
     );
   }
 
@@ -759,15 +1113,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final id = '${sale.id}';
     final shortId = (id.length > 8 ? id.substring(id.length - 8) : id).toUpperCase();
     final time = sale.timestamp.toLocal();
+    final hasCost = _hasCost(sale);
+    final profit = _profitOf(sale);
+    final margin = (hasCost && sale.total > 0) ? profit / sale.total * 100 : 0.0;
+    final unitPrice = sale.quantity > 0 ? sale.total / sale.quantity : sale.total;
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -806,6 +1165,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
               const SizedBox(height: 16),
               const Divider(),
               _detailRow('Quantity', '${sale.quantity}'),
+              _detailRow('Selling price (each)', tzs(unitPrice)),
+              if (hasCost) ...[
+                _detailRow('Buying price (each)', tzs(sale.buyingPrice)),
+                _detailRow('Profit', tzs(profit),
+                    valueColor: profit < 0 ? _lossColor : _profitColor),
+                _detailRow('Margin', '${margin.toStringAsFixed(1)}%',
+                    valueColor: profit < 0 ? _lossColor : _profitColor),
+              ] else
+                _detailRow('Buying price', 'Not recorded'),
               _detailRow('Payment', sale.isMobile ? 'Mobile / Card' : 'Cash'),
               _detailRow('Date', DateFormat('EEE, d MMM yyyy').format(time)),
               _detailRow('Time', DateFormat('HH:mm').format(time)),
@@ -829,21 +1197,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _detailRow(String label, String value) {
+  Widget _detailRow(String label, String value, {Color? valueColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
           Text(label, style: TextStyle(color: Colors.grey[600])),
           const Spacer(),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: valueColor)),
         ],
       ),
     );
   }
 
   // ------------------------------------------------------------------ helpers
-  Widget _card({required String title, required Widget child}) {
+  Widget _card({required String title, required Widget child, Widget? trailing}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -854,7 +1222,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          Row(
+            children: [
+              Expanded(
+                child: Text(title,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              ),
+              if (trailing != null) trailing,
+            ],
+          ),
           const SizedBox(height: 12),
           child,
         ],
@@ -863,11 +1239,27 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 }
 
+/// Revenue / cost / profit of the sales that have a buying price.
+class _Fin {
+  double revenue = 0;
+  double cost = 0;
+  int known = 0; // sales with a buying price
+  int missing = 0; // sales without one (left out of profit)
+  double get profit => revenue - cost;
+  double get margin => revenue <= 0 ? 0 : profit / revenue * 100;
+}
+
 class _ProductTotal {
   final String title;
   double revenue = 0;
   int quantity = 0;
+  double knownRevenue = 0; // revenue from sales that have a buying price
+  double cost = 0;
   _ProductTotal(this.title);
+
+  bool get hasCost => knownRevenue > 0;
+  double get profit => knownRevenue - cost;
+  double get margin => knownRevenue <= 0 ? 0 : profit / knownRevenue * 100;
 }
 
 class _Bar {
