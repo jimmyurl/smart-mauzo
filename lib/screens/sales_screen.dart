@@ -222,7 +222,7 @@ class _SalesScreenState extends State<SalesScreen> {
 
   // ------------------------------------------------------------- period chips
   Widget _periodChips() {
-    const labels = {
+    final labels = {
       _Period.today: 'Today',
       _Period.week: '7 days',
       _Period.month: '30 days',
