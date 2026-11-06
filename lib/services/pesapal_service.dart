@@ -24,17 +24,26 @@ class PesapalService {
       return Map<String, dynamic>.from(res.data as Map);
     } on FunctionException catch (e) {
       final d = e.details;
-      throw (d is Map && d['error'] != null) ? '${d['error']}' : 'Payment service error (${e.status})';
+      throw (d is Map && d['error'] != null)
+          ? '${d['error']}'
+          : 'Payment service error (${e.status})';
     }
   }
 
+  /// Starts a Pesapal payment for a whole cart.
+  /// Each item must contain 'product_id' and 'quantity'. Any 'unit_price' is
+  /// deliberately NOT sent: the server must price the order from the database.
   Future<PesapalCheckout> startPayment({
-    required String productId,
-    required int quantity,
+    required List<Map<String, dynamic>> items,
     String? phone,
   }) async {
-    final d = await _call('pesapal-create',
-        {'product_id': productId, 'quantity': quantity, if (phone != null) 'phone': phone});
+    final d = await _call('pesapal-create', {
+      'items': [
+        for (final i in items)
+          {'product_id': i['product_id'], 'quantity': i['quantity']}
+      ],
+      if (phone != null) 'phone': phone,
+    });
     return PesapalCheckout(d['pay_url'], d['trans_token'], d['return_base']);
   }
 

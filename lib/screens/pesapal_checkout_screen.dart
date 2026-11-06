@@ -5,14 +5,13 @@ import '../services/pesapal_service.dart';
 /// Opens Pesapal's hosted page (M-Pesa, Tigo Pesa, Airtel Money, cards).
 /// Pops with `true` only when Pesapal confirms the payment.
 class PesapalCheckoutScreen extends StatefulWidget {
-  final String productId;
-  final int quantity;
+  /// Each item must contain 'product_id' and 'quantity'.
+  final List<Map<String, dynamic>> items;
   final double total;
   final String? customerPhone;
   const PesapalCheckoutScreen({
     super.key,
-    required this.productId,
-    required this.quantity,
+    required this.items,
     required this.total,
     this.customerPhone,
   });
@@ -37,9 +36,9 @@ class _PesapalCheckoutScreenState extends State<PesapalCheckoutScreen> {
   Future<void> _start() async {
     try {
       final c = await _svc.startPayment(
-          productId: widget.productId,
-          quantity: widget.quantity,
-          phone: widget.customerPhone);
+        items: widget.items,
+        phone: widget.customerPhone,
+      );
       _checkout = c;
       _web = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)

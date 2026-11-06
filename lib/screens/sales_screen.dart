@@ -5,7 +5,7 @@ import '../services/supabase_service.dart';
 import '../utils/money.dart';
 import 'new_sale_screen.dart';
 
-enum _Period { today, week, month, all }
+enum _Period { today, week, month, all, custom }
 
 /// Sales report: pick a period, see totals, payment split, best sellers and
 /// the sales grouped by day. The "New sale" button opens NewSaleScreen.
@@ -26,6 +26,7 @@ class _SalesScreenState extends State<SalesScreen> {
   bool _isLoading = true;
   String _errorMessage = '';
   _Period _period = _Period.today;
+  DateTimeRange? _customRange; // set when the user picks dates on the calendar
 
   @override
   void initState() {
@@ -76,7 +77,33 @@ class _SalesScreenState extends State<SalesScreen> {
         return today.subtract(const Duration(days: 29));
       case _Period.all:
         return null;
+      case _Period.custom:
+        return _customRange == null ? null : _startOfDay(_customRange!.start);
     }
+  }
+
+  /// Exclusive upper bound (only used by the calendar range).
+  DateTime? get _periodEnd {
+    if (_period != _Period.custom || _customRange == null) return null;
+    return _startOfDay(_customRange!.end).add(const Duration(days: 1));
+  }
+
+  Future<void> _pickDates() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now,
+      initialDateRange: _customRange ??
+          DateTimeRange(start: _startOfDay(now), end: _startOfDay(now)),
+      helpText: 'Select a day or a range',
+      saveText: 'Show',
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _customRange = picked;
+      _period = _Period.custom;
+    });
   }
 
   String get _periodLabel {
@@ -89,13 +116,25 @@ class _SalesScreenState extends State<SalesScreen> {
         return 'Last 30 days';
       case _Period.all:
         return 'All time';
+      case _Period.custom:
+        final r = _customRange;
+        if (r == null) return 'Pick dates';
+        final f = DateFormat('d MMM yyyy');
+        return _startOfDay(r.start) == _startOfDay(r.end)
+            ? f.format(r.start)
+            : '${f.format(r.start)} - ${f.format(r.end)}';
     }
   }
 
   List<Sale> get _filtered {
     final start = _periodStart;
-    if (start == null) return _sales;
-    return _sales.where((s) => !s.timestamp.toLocal().isBefore(start)).toList();
+    final end = _periodEnd;
+    return _sales.where((s) {
+      final t = s.timestamp.toLocal();
+      if (start != null && t.isBefore(start)) return false;
+      if (end != null && !t.isBefore(end)) return false;
+      return true;
+    }).toList();
   }
 
   String _dayLabel(DateTime day) {
@@ -116,6 +155,11 @@ class _SalesScreenState extends State<SalesScreen> {
         backgroundColor: _navy,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_month),
+            tooltip: 'Search by date',
+            onPressed: _pickDates,
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchSales),
         ],
       ),
@@ -183,6 +227,7 @@ class _SalesScreenState extends State<SalesScreen> {
       _Period.week: '7 days',
       _Period.month: '30 days',
       _Period.all: 'All',
+      _Period.custom: _period == _Period.custom ? _periodLabel : 'Pick date',
     };
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -201,7 +246,17 @@ class _SalesScreenState extends State<SalesScreen> {
                 color: selected ? Colors.white : Colors.black87,
                 fontWeight: FontWeight.w600,
               ),
-              onSelected: (_) => setState(() => _period = p),
+              avatar: p == _Period.custom
+                  ? Icon(Icons.calendar_month,
+                      size: 18, color: selected ? Colors.white : _navy)
+                  : null,
+              onSelected: (_) {
+                if (p == _Period.custom) {
+                  _pickDates();
+                } else {
+                  setState(() => _period = p);
+                }
+              },
             ),
           );
         }).toList(),
