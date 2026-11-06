@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/shop_service.dart';
 import '../services/supabase_service.dart';
+import '../utils/money.dart';
 import 'barcode_scan_page.dart';
 
 /// Register a new item (product) in the shop. Owner only.
@@ -17,6 +18,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _barcode = TextEditingController();
+  final _buyPrice = TextEditingController();
   final _price = TextEditingController();
   final _stock = TextEditingController();
   final _description = TextEditingController();
@@ -36,6 +38,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
   void dispose() {
     _name.dispose();
     _barcode.dispose();
+    _buyPrice.dispose();
     _price.dispose();
     _stock.dispose();
     _description.dispose();
@@ -71,6 +74,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
   void _clear() {
     _name.clear();
     _barcode.clear();
+    _buyPrice.clear();
     _price.clear();
     _stock.clear();
     _description.clear();
@@ -85,6 +89,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     try {
       await _svc.addProduct(
         title: title,
+        buyingPrice: double.parse(_buyPrice.text),
         price: double.parse(_price.text),
         stock: int.parse(_stock.text),
         barcode: _barcode.text.trim(),
@@ -110,6 +115,39 @@ class _AddProductScreenState extends State<AddProductScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// Shows the profit per item as soon as both prices are typed.
+  Widget _profitPreview() {
+    return AnimatedBuilder(
+      animation: Listenable.merge([_buyPrice, _price]),
+      builder: (context, _) {
+        final buy = double.tryParse(_buyPrice.text);
+        final sell = double.tryParse(_price.text);
+        if (buy == null || sell == null || buy <= 0 || sell <= 0) {
+          return const SizedBox.shrink();
+        }
+        final profit = sell - buy;
+        final margin = profit / sell * 100;
+        final loss = profit < 0;
+        final color = loss ? Colors.red[700]! : Colors.green[700]!;
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(top: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            loss
+                ? 'Selling below buying price: you lose ${tzs(-profit)} on each item.'
+                : 'Profit per item: ${tzs(profit)}  •  Margin ${margin.toStringAsFixed(1)}%',
+            style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -183,36 +221,54 @@ class _AddProductScreenState extends State<AddProductScreen> {
                           children: [
                             Expanded(
                               child: TextFormField(
-                                controller: _price,
+                                controller: _buyPrice,
                                 keyboardType: TextInputType.number,
                                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                                 decoration: const InputDecoration(
-                                  labelText: 'Price (TZS) *',
-                                  prefixIcon: Icon(Icons.payments_outlined),
+                                  labelText: 'Buying price (TZS) *',
+                                  helperText: 'Cost of 1 item',
+                                  prefixIcon: Icon(Icons.shopping_cart_outlined),
                                   border: OutlineInputBorder(),
                                 ),
                                 validator: (v) {
                                   final n = double.tryParse(v ?? '');
-                                  return (n == null || n <= 0) ? 'Enter a price' : null;
+                                  return (n == null || n <= 0) ? 'Enter buying price' : null;
                                 },
                               ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: TextFormField(
-                                controller: _stock,
+                                controller: _price,
                                 keyboardType: TextInputType.number,
                                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                                 decoration: const InputDecoration(
-                                  labelText: 'In stock *',
-                                  prefixIcon: Icon(Icons.inventory_2_outlined),
+                                  labelText: 'Selling price (TZS) *',
+                                  helperText: 'Price to customer',
+                                  prefixIcon: Icon(Icons.payments_outlined),
                                   border: OutlineInputBorder(),
                                 ),
-                                validator: (v) =>
-                                    int.tryParse(v ?? '') == null ? 'Enter quantity' : null,
+                                validator: (v) {
+                                  final n = double.tryParse(v ?? '');
+                                  return (n == null || n <= 0) ? 'Enter selling price' : null;
+                                },
                               ),
                             ),
                           ],
+                        ),
+                        _profitPreview(),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _stock,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          decoration: const InputDecoration(
+                            labelText: 'In stock *',
+                            prefixIcon: Icon(Icons.inventory_2_outlined),
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (v) =>
+                              int.tryParse(v ?? '') == null ? 'Enter quantity' : null,
                         ),
                         const SizedBox(height: 16),
                         TextFormField(
