@@ -6,6 +6,7 @@ class Sale {
   final double total;
   final DateTime timestamp;
   final String paymentMethod; // 'cash' | 'mobile'
+  final double buyingPrice; // cost per unit at the moment of sale
 
   Sale({
     required this.id,
@@ -15,6 +16,7 @@ class Sale {
     required this.total,
     required this.timestamp,
     this.paymentMethod = 'cash',
+    this.buyingPrice = 0,
   });
 
   bool get isMobile => paymentMethod == 'mobile';
@@ -28,6 +30,7 @@ class Sale {
       'total': total,
       'timestamp': timestamp.toIso8601String(),
       'payment_method': paymentMethod,
+      'buying_price': buyingPrice,
     };
   }
 
@@ -40,6 +43,7 @@ class Sale {
       total: (json['total'] as num).toDouble(),
       timestamp: DateTime.parse(json['timestamp']),
       paymentMethod: json['payment_method'] ?? 'cash',
+      buyingPrice: double.tryParse('${json['buying_price'] ?? 0}') ?? 0,
     );
   }
 }
