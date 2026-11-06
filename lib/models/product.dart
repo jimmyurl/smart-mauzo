@@ -3,6 +3,7 @@ class Product {
   final String title;
   final String? description;
   final double price;
+  final double buyingPrice; // cost per item (what the shop pays suppliers)
   final String? imageUrl;
   final String barcode;
   int stockQuantity;
@@ -14,6 +15,7 @@ class Product {
     required this.title,
     this.description,
     required this.price,
+    this.buyingPrice = 0,
     this.imageUrl,
     required this.barcode,
     required this.stockQuantity,
@@ -27,6 +29,7 @@ class Product {
       title: json['title'],
       description: json['description'],
       price: double.parse(json['price'].toString()),
+      buyingPrice: double.tryParse('${json['buying_price'] ?? 0}') ?? 0,
       imageUrl: json['image_url'],
       barcode: json['barcode'] ?? '',
       stockQuantity: json['stock_quantity'] ?? 0,
@@ -41,6 +44,7 @@ class Product {
       'title': title,
       'description': description,
       'price': price,
+      'buying_price': buyingPrice,
       'image_url': imageUrl,
       'barcode': barcode,
       'stock_quantity': stockQuantity,
