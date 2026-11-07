@@ -51,6 +51,31 @@ class SupabaseService {
   SupabaseClient get client => Supabase.instance.client;
   SupabaseClient get supabaseClient => client;
 
+  /// A phone that started without internet can know who the user is (remembered
+  /// sign-in) without having a live session yet. The server would then treat the
+  /// request as anonymous and answer with an EMPTY list instead of an error, so
+  /// fail here and let the screens use their saved copy.
+  void _requireLiveSession() {
+    if (client.auth.currentSession == null && OfflineIdentity.isRemembered) {
+      throw 'Waiting to sign in again (no connection)';
+    }
+  }
+
+  /// Text safe to show to a shop owner. Technical details (socket errors, URLs,
+  /// error numbers) only go to the debug log, never to the screen.
+  static String friendlyError(Object e) {
+    final text = '$e'.toLowerCase();
+    const networkHints = [
+      'socketexception', 'clientexception', 'timeoutexception', 'handshake',
+      'connection', 'network', 'failed host lookup', 'waiting to sign in',
+      'jwt', 'not signed in',
+    ];
+    if (networkHints.any(text.contains)) {
+      return 'No internet connection.\nYour data will load again when you are back online.';
+    }
+    return 'Something went wrong. Please try again.';
+  }
+
   // ---------------------------------------------------------------- products
   Future<Product?> getProductByBarcode(String barcode) async {
     try {
@@ -65,6 +90,7 @@ class SupabaseService {
 
   Future<List<Product>> getProducts() async {
     try {
+      _requireLiveSession();
       final response = await client.from(_products).select().order('title');
       final products =
           response.map<Product>((json) => Product.fromJson(json)).toList();
@@ -73,7 +99,7 @@ class SupabaseService {
       return products;
     } catch (e) {
       debugPrint('Error fetching products: $e');
-      throw 'Failed to fetch products: $e';
+      throw friendlyError(e);
     }
   }
 
@@ -274,12 +300,13 @@ class SupabaseService {
 
   Future<List<Sale>> fetchSales() async {
     try {
+      _requireLiveSession();
       final response =
           await client.from(_sales).select().order('timestamp', ascending: false);
       return response.map<Sale>((json) => Sale.fromJson(json)).toList();
     } catch (e) {
       debugPrint('Error fetching all sales: $e');
-      throw 'Failed to fetch sales: $e';
+      throw friendlyError(e);
     }
   }
 }
