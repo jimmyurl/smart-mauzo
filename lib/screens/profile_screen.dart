@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import '../services/shop_service.dart';
+import '../utils/money.dart';
 import '../utils/require_login.dart';
 
 /// Profile tab.
@@ -48,6 +50,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (ok == true) {
       await _svc.signOut(); // AuthGate switches back to guest mode
+    }
+  }
+
+  /// Owner: replace the shop code. The old code stops working at once.
+  Future<void> _confirmNewCode() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Make a new shop code?'),
+        content: const Text(
+            'The old code will stop working. Cashiers who already joined are not affected.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Make new code')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await _svc.newJoinCode();
+      if (!mounted) return;
+      await _reload();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('New shop code ready')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not make a new code. Check your internet.')));
     }
   }
 
@@ -267,6 +298,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 24),
                   _sectionTitle('Add a cashier'),
                   _shopCodeCard(shop.joinCode!),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: _confirmNewCode,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Make a new code'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _sectionTitle('My cashiers'),
+                  _TeamSection(svc: _svc, onNewCode: _confirmNewCode),
+                ],
+                if (!shop.isOwner) ...[
+                  const SizedBox(height: 12),
+                  _infoCard(
+                    icon: Icons.lock_outline,
+                    title: 'Your sales only',
+                    subtitle: 'You can make sales and see the sales you made.',
+                  ),
                 ],
               ],
               const SizedBox(height: 24),
@@ -396,6 +446,141 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Owner only: the cashiers in the shop, what each has sold, and a way to remove one.
+class _TeamSection extends StatefulWidget {
+  final ShopService svc;
+  final VoidCallback onNewCode;
+  const _TeamSection({required this.svc, required this.onNewCode});
+
+  @override
+  State<_TeamSection> createState() => _TeamSectionState();
+}
+
+class _TeamSectionState extends State<_TeamSection> {
+  late Future<List<TeamMember>> _future = widget.svc.team();
+
+  void _reload() => setState(() => _future = widget.svc.team());
+
+  Future<void> _remove(TeamMember m) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Remove ${m.label}?'),
+        content: const Text(
+            'They lose access to your shop straight away. Their past sales stay in your records.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Remove', style: TextStyle(color: Colors.red[700])),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await widget.svc.removeMember(m.userId);
+      if (!mounted) return;
+      _reload();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${m.label} removed'),
+        duration: const Duration(seconds: 8),
+        // They still know the old code, so offer a fresh one right away.
+        action: SnackBarAction(label: 'New shop code', onPressed: widget.onNewCode),
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not remove. Check your internet and try again.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<TeamMember>>(
+      future: _future,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snap.hasError) {
+          return Row(
+            children: [
+              Expanded(
+                child: Text('Could not load your cashiers.',
+                    style: TextStyle(color: Colors.grey[700])),
+              ),
+              TextButton(onPressed: _reload, child: const Text('Try again')),
+            ],
+          );
+        }
+        final cashiers = [for (final m in snap.data!) if (!m.isOwner) m];
+        if (cashiers.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              'No cashiers yet. Give them the shop code above. Each cashier sees only '
+              'the sales they make themselves.',
+              style: TextStyle(color: Colors.grey[700], fontSize: 13),
+            ),
+          );
+        }
+        return Column(
+          children: [
+            for (final m in cashiers)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(m.label,
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 2),
+                          Text(
+                            m.salesCount == 0
+                                ? 'No sales yet'
+                                : '${m.salesCount} sale${m.salesCount == 1 ? '' : 's'}  •  ${tzs(m.salesTotal)}',
+                            style: TextStyle(color: Colors.grey[800], fontSize: 13),
+                          ),
+                          Text(
+                            m.lastSale == null
+                                ? 'Joined ${DateFormat('d MMM yyyy').format(m.joinedAt.toLocal())}'
+                                : 'Last sale ${DateFormat('d MMM, HH:mm').format(m.lastSale!.toLocal())}',
+                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => _remove(m),
+                      icon: Icon(Icons.person_remove_outlined, color: Colors.red[700]),
+                      tooltip: 'Remove cashier',
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
