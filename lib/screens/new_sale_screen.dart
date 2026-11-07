@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'barcode_scan_page.dart';
 import '../models/product.dart';
@@ -312,7 +311,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     if (!mounted) return;
 
     if (result.outcome == SaleOutcome.network) {
-      final uid = Supabase.instance.client.auth.currentUser?.id;
+      final uid = SyncService().userId;
       final saved = uid != null &&
           await SyncService().enqueue(PendingSale(
             receiptId: receiptId,
