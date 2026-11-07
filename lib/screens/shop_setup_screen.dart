@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/shop_service.dart';
+import '../services/signup_intent.dart';
 
 /// Shown once after sign-up: create your shop (you become the owner) or join one with a code (you become a cashier).
 class ShopSetupScreen extends StatefulWidget {
@@ -16,6 +17,19 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
   final _name = TextEditingController();
   final _code = TextEditingController();
   bool _busy = false;
+  bool _ready = false; // cashier flag read from the phone
+
+  /// This account signed up as a cashier: it may only join a shop, never create one.
+  bool get _cashierOnly =>
+      SignupIntent.isCashier(Supabase.instance.client.auth.currentUser?.id);
+
+  @override
+  void initState() {
+    super.initState();
+    SignupIntent.load().then((_) {
+      if (mounted) setState(() => _ready = true);
+    });
+  }
 
   @override
   void dispose() {
@@ -48,17 +62,19 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
     final blue = Colors.blue[900]!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Set up your shop'),
+        title: Text(_ready && _cashierOnly ? 'Join your shop' : 'Set up your shop'),
         backgroundColor: blue,
         foregroundColor: Colors.white,
         actions: [TextButton(onPressed: _svc.signOut, child: const Text('Sign out', style: TextStyle(color: Colors.white)))],
       ),
-      body: AbsorbPointer(
+      body: !_ready
+          ? const Center(child: CircularProgressIndicator())
+          : AbsorbPointer(
         absorbing: _busy,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Card(
+            if (!_cashierOnly) Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -90,7 +106,7 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            if (!_cashierOnly) const SizedBox(height: 16),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
