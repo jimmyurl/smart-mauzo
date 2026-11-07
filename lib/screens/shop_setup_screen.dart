@@ -15,12 +15,11 @@ class ShopSetupScreen extends StatefulWidget {
 class _ShopSetupScreenState extends State<ShopSetupScreen> {
   final _svc = ShopService();
   final _name = TextEditingController();
-  final _code = TextEditingController();
   bool _busy = false;
-  bool _ready = false; // cashier flag read from the phone
+  bool _ready = false; // the cashier flag has been read from the phone
 
-  /// This account signed up as a cashier: it may only join a shop, never create one.
-  bool get _cashierOnly =>
+  /// This account logs in with a cashier code: it can never create a shop.
+  bool get _isCashier =>
       SignupIntent.isCashier(Supabase.instance.client.auth.currentUser?.id);
 
   @override
@@ -34,7 +33,6 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
   @override
   void dispose() {
     _name.dispose();
-    _code.dispose();
     super.dispose();
   }
 
@@ -57,24 +55,60 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
   }
 
+  /// A cashier whose code was removed (or never worked) lands here.
+  Widget _noAccess(Color blue) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Smart Mauzo'),
+        backgroundColor: blue,
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lock_outline, size: 56, color: Colors.grey[600]),
+              const SizedBox(height: 16),
+              const Text('You do not have access to a shop',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text('Ask your shop owner for a new cashier code, then log in again.',
+                  textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[700])),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: _svc.signOut,
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: blue, foregroundColor: Colors.white),
+                child: const Text('Log in with a new code'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final blue = Colors.blue[900]!;
+    if (!_ready) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_isCashier) return _noAccess(blue);
     return Scaffold(
       appBar: AppBar(
-        title: Text(_ready && _cashierOnly ? 'Join your shop' : 'Set up your shop'),
+        title: const Text('Set up your shop'),
         backgroundColor: blue,
         foregroundColor: Colors.white,
         actions: [TextButton(onPressed: _svc.signOut, child: const Text('Sign out', style: TextStyle(color: Colors.white)))],
       ),
-      body: !_ready
-          ? const Center(child: CircularProgressIndicator())
-          : AbsorbPointer(
+      body: AbsorbPointer(
         absorbing: _busy,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            if (!_cashierOnly) Card(
+            Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -83,7 +117,7 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
                     const Text('I own a shop',
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    Text('Create your shop. You can add cashiers later with a code.',
+                    Text('Create your shop. You can add cashiers later; each one gets their own login code.',
                         style: TextStyle(color: Colors.grey[600])),
                     const SizedBox(height: 12),
                     TextField(
@@ -106,36 +140,12 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
                 ),
               ),
             ),
-            if (!_cashierOnly) const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('I work in a shop',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
-                    Text('Ask the owner for the shop code (shown on their Profile tab).',
-                        style: TextStyle(color: Colors.grey[600])),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _code,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: const InputDecoration(
-                          labelText: 'Shop code', border: OutlineInputBorder()),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: () => _run(() => _svc.joinShop(_code.text)),
-                        child: const Text('Join shop'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            const SizedBox(height: 8),
+            Text(
+              'Are you a cashier? Tap Sign out, then choose "Cashier" on the login page '
+              'and enter the code your shop owner gave you.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
             ),
             if (_busy) const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
           ],
