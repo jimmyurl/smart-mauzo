@@ -301,8 +301,13 @@ class SupabaseService {
   Future<List<Sale>> fetchSales() async {
     try {
       _requireLiveSession();
+      // Cashiers get no buying prices (so no profit figures); the database already
+      // limits them to the sales they made themselves.
+      final columns = OfflineIdentity.isOwner
+          ? '*'
+          : 'id,product_id,product_title,quantity,total,timestamp,payment_method,sold_by';
       final response =
-          await client.from(_sales).select().order('timestamp', ascending: false);
+          await client.from(_sales).select(columns).order('timestamp', ascending: false);
       return response.map<Sale>((json) => Sale.fromJson(json)).toList();
     } catch (e) {
       debugPrint('Error fetching all sales: $e');
