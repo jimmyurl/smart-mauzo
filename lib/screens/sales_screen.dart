@@ -50,7 +50,8 @@ class _SalesScreenState extends State<SalesScreen> {
     if (!OfflineIdentity.isOwner) return;
     try {
       final team = await ShopService().team();
-      if (mounted) setState(() => _team = team);
+      // Cashiers who have not logged in yet have made no sales: leave them out.
+      if (mounted) setState(() => _team = [for (final m in team) if (m.userId != null) m]);
     } catch (_) {}
   }
 
