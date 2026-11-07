@@ -29,6 +29,11 @@ class _AuthGateState extends State<AuthGate> {
   Session? _session;
   Future<_ShopState>? _shop;
 
+  /// The user whose shop we last asked about. (Do not compare with [_userId]:
+  /// another listener may already have updated it when this one runs, which left
+  /// the screen waiting for a shop check that never started.)
+  String? _loadedFor;
+
   /// Signed in on this phone: a live session, or the user remembered from the
   /// last online sign-in (when the app was started without internet).
   String? get _userId => _session?.user.id ?? OfflineIdentity.userId;
@@ -38,18 +43,24 @@ class _AuthGateState extends State<AuthGate> {
     super.initState();
     _session = _svc.session;
     ShopService.shopChanged.addListener(_onShopChanged);
+    _loadedFor = _userId;
     if (_userId != null) _shop = _loadShop();
     _sub = _svc.authChanges.listen(
       (state) {
         if (!mounted) return;
-        final before = _userId;
         OfflineIdentity.onAuth(state);
+        final uid = state.session?.user.id;
         setState(() {
           _session = state.session;
-          // Only reload the shop when the user actually changes (not on hourly
-          // token refresh, and not when a remembered login is restored).
-          final now = _userId;
-          if (now != before) _shop = now == null ? null : _loadShop();
+          if (state.event == AuthChangeEvent.signedOut) {
+            _loadedFor = null;
+            _shop = null;
+          } else if (uid != null && uid != _loadedFor) {
+            // A different person signed in (not an hourly token refresh, and not a
+            // remembered login being restored): check their shop.
+            _loadedFor = uid;
+            _shop = _loadShop();
+          }
         });
       },
       onError: (Object e) => debugPrint('Auth event error: $e'),
@@ -89,6 +100,9 @@ class _AuthGateState extends State<AuthGate> {
     // Guest: let them look around. Screens call requireLogin() when an
     // action needs an account.
     if (_userId == null) return widget.home;
+
+    // Safety net: never wait on a check that was never started.
+    _shop ??= _loadShop();
 
     return FutureBuilder<_ShopState>(
       future: _shop,
