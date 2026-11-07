@@ -6,6 +6,7 @@ import 'screens/profile_screen.dart';
 import 'screens/sales_screen.dart';
 import 'screens/scan_screen.dart';
 import 'services/supabase_service.dart';
+import 'services/sync_service.dart';
 import 'utils/login_required_view.dart';
 import 'utils/require_login.dart';
 
@@ -17,6 +18,7 @@ void main() async {
     return;
   }
   await SupabaseService().initialize();
+  await SyncService().init(); // offline sale queue + automatic sync
   runApp(const MyApp());
 }
 
