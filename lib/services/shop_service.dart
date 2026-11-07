@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import '../utils/phone_auth.dart';
 import 'offline_store.dart';
+import 'signup_intent.dart';
 
 class ShopInfo {
   final String id;
@@ -31,37 +32,51 @@ class ShopInfo {
 
 /// One person in the owner's shop (from sm_shop_team, owners only).
 class TeamMember {
-  final String userId;
-  final String email; // for phone accounts this is a made-up address, see [label]
+  final String? userId; // null until a cashier has logged in once
+  final String? name; // the name the owner gave a cashier
+  final String? email; // older phone-number accounts only
   final String role; // 'owner' | 'cashier'
   final DateTime joinedAt;
   final int salesCount; // number of sales (a whole cart counts once)
   final double salesTotal;
   final DateTime? lastSale;
+  final String? code; // the cashier's login code (null for older accounts)
+  final bool claimed; // has logged in at least once
 
   TeamMember({
     required this.userId,
+    required this.name,
     required this.email,
     required this.role,
     required this.joinedAt,
     required this.salesCount,
     required this.salesTotal,
-    this.lastSale,
+    required this.lastSale,
+    required this.code,
+    required this.claimed,
   });
 
   bool get isOwner => role == 'owner';
 
-  /// What to show as the person's name: their phone number (or email).
-  String get label => PhoneAuth.phoneFromEmail(email) ?? email;
+  /// What to show as the person's name.
+  String get label =>
+      name ?? PhoneAuth.phoneFromEmail(email) ?? email ?? 'Cashier';
+
+  /// "ABCD-EFGH" is easier to read out and type than "ABCDEFGH".
+  String? get prettyCode =>
+      code == null ? null : '${code!.substring(0, 4)}-${code!.substring(4)}';
 
   factory TeamMember.fromJson(Map<String, dynamic> j) => TeamMember(
-        userId: j['user_id'] as String,
-        email: (j['email'] as String?) ?? '',
+        userId: j['user_id'] as String?,
+        name: j['name'] as String?,
+        email: j['email'] as String?,
         role: j['role'] as String,
         joinedAt: DateTime.parse(j['joined_at'] as String),
         salesCount: (j['sales_count'] as num?)?.toInt() ?? 0,
         salesTotal: (j['sales_total'] as num?)?.toDouble() ?? 0,
         lastSale: j['last_sale'] == null ? null : DateTime.parse(j['last_sale'] as String),
+        code: j['code'] as String?,
+        claimed: (j['claimed'] as bool?) ?? true,
       );
 }
 
@@ -118,7 +133,75 @@ class ShopService {
     ];
   }
 
-  /// Takes a cashier out of the shop. Their past sales stay in the records.
+  /// Owner: adds a cashier by name and returns the cashier's login code.
+  Future<String> addCashier(String name) async {
+    final r = await _c.rpc('sm_add_cashier', params: {'p_name': name});
+    return r as String;
+  }
+
+  /// Owner: removes a cashier who logs in with a code. The code stops working.
+  Future<void> removeCashier(String code) =>
+      _c.rpc('sm_remove_cashier', params: {'p_code': code});
+
+  // ---------------------------------------------------------- cashier login
+  /// Letters and digits only, upper case ("abcd-efgh" -> "ABCDEFGH").
+  static String normalizeCode(String raw) =>
+      raw.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+  // A cashier has no phone number or password. Behind the scenes the code is
+  // used to make a private account the first time, and to sign in to it later,
+  // so any phone can log in with the same code.
+  static String _cashierEmail(String code) {
+    // Same address domain the phone-number accounts already use.
+    final sample = PhoneAuth.emailFor('0');
+    final at = sample.indexOf('@');
+    final domain = at >= 0 ? sample.substring(at) : '@smartmauzo.app';
+    return 'cashier-${code.toLowerCase()}$domain';
+  }
+
+  static String _cashierPassword(String code) => 'Mauzo-$code';
+
+  /// Log in with only the code the owner gave. Throws [FormatException] with a
+  /// message that is safe to show.
+  Future<void> cashierLogin(String rawCode) async {
+    final code = normalizeCode(rawCode);
+    if (code.length != 8) {
+      throw const FormatException('Enter the 8-character code from your shop owner');
+    }
+    final ok = await _c.rpc('sm_cashier_code_ok', params: {'p_code': code});
+    if (ok != true) {
+      throw const FormatException('Code not recognised. Check it with your shop owner.');
+    }
+
+    final email = _cashierEmail(code);
+    final password = _cashierPassword(code);
+    // Show the join-only screen (never "Create shop") from the moment we sign in.
+    SignupIntent.expectCashier();
+    try {
+      try {
+        await _c.auth.signInWithPassword(email: email, password: password);
+      } on AuthException catch (e) {
+        if (!e.message.toLowerCase().contains('invalid login')) rethrow;
+        // First time this code is used: make its account.
+        final res = await _c.auth.signUp(email: email, password: password);
+        if (res.session == null) {
+          throw const FormatException(
+              'Sign-in is blocked: turn OFF "Confirm email" in Supabase '
+              '(Authentication > Providers > Email).');
+        }
+      }
+      await _c.rpc('sm_claim_cashier_code', params: {'p_code': code});
+      final uid = _c.auth.currentUser?.id;
+      if (uid != null) await SignupIntent.markCashier(uid);
+      shopChanged.value++;
+    } catch (_) {
+      SignupIntent.cancelPending();
+      if (_c.auth.currentSession != null) await _c.auth.signOut();
+      rethrow;
+    }
+  }
+
+  /// Takes an older phone-number cashier out of the shop. Their past sales stay.
   Future<void> removeMember(String userId) =>
       _c.rpc('sm_remove_member', params: {'p_user_id': userId});
 
