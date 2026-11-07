@@ -1,7 +1,13 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import 'barcode_scan_page.dart';
 import '../models/product.dart';
+import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
+import '../services/sync_service.dart';
+import '../widgets/pending_sync_banner.dart';
 import '../utils/category_utils.dart';
 import '../utils/money.dart';
 import '../widgets/category_chips.dart';
@@ -33,6 +39,8 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _keepScanning = true;
+  bool _usingCache = false; // product list comes from the phone, not the server
+  bool _fetching = false;
 
   String _key(Product p) => p.id.toString();
 
@@ -42,11 +50,21 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
   @override
   void initState() {
     super.initState();
+    SyncService().addListener(_onSyncChanged);
     _fetchProducts();
+  }
+
+  /// Connection or queue changed: refresh the buttons, and when the connection is
+  /// back reload the real product list.
+  void _onSyncChanged() {
+    if (!mounted) return;
+    setState(() {});
+    if (_usingCache && SyncService().online && !_fetching) _fetchProducts();
   }
 
   @override
   void dispose() {
+    SyncService().removeListener(_onSyncChanged);
     _searchController.dispose();
     _searchFocus.dispose();
     super.dispose();
@@ -66,22 +84,40 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
   }
 
   Future<void> _fetchProducts() async {
+    if (_fetching) return;
+    _fetching = true;
+    List<Product>? products;
+    var fromCache = false;
+    Object? error;
     try {
-      final products = await _supabaseService.getProducts();
-      if (!mounted) return;
-      setState(() {
-        _products = products;
-        _loading = false;
-        // Re-bind cart lines to fresh product data (stock may have changed).
-        final byId = {for (final p in products) _key(p): p};
-        _cart.removeWhere((k, _) => !byId.containsKey(k));
-        _cart.forEach((k, line) => line.product = byId[k]!);
-      });
+      products = await _supabaseService.getProducts().timeout(const Duration(seconds: 8));
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      _showMessage('Error fetching products: $e');
+      error = e;
+      // No connection (or a very slow one): use the last list saved on the phone.
+      products = await OfflineStore().loadProducts();
+      fromCache = products != null;
+    } finally {
+      _fetching = false;
     }
+    if (!mounted) return;
+
+    if (products == null) {
+      setState(() => _loading = false);
+      _showMessage('Error fetching products: $error');
+      return;
+    }
+
+    // Sales still waiting to sync already left the shelf: show the lower stock.
+    final list = SyncService().applyPending(products);
+    setState(() {
+      _products = list;
+      _usingCache = fromCache;
+      _loading = false;
+      // Re-bind cart lines to fresh product data (stock may have changed).
+      final byId = {for (final p in list) _key(p): p};
+      _cart.removeWhere((k, _) => !byId.containsKey(k));
+      _cart.forEach((k, line) => line.product = byId[k]!);
+    });
   }
 
   // ---------------------------------------------------------------- cart
@@ -256,19 +292,62 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
   }
 
   /// Cash: the whole cart is saved in one database transaction (all lines or none).
+  /// With no connection the sale is kept on the phone and sent automatically later.
   Future<void> _cashSale() async {
     if (!_validateCart()) return;
     setState(() => _saving = true);
-    final error = await _supabaseService.recordCartSale([
+
+    final items = <Map<String, dynamic>>[
       for (final l in _cart.values) {'product_id': l.product.id, 'quantity': l.quantity}
-    ]);
+    ];
+    final receiptId = const Uuid().v4(); // lets the server ignore a repeated send
+    final soldAt = DateTime.now();
+    final total = _total;
+
+    final result = await _supabaseService.submitCartSale(
+      items: items,
+      receiptId: receiptId,
+      soldAt: soldAt,
+    );
     if (!mounted) return;
+
+    if (result.outcome == SaleOutcome.network) {
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      final saved = uid != null &&
+          await SyncService().enqueue(PendingSale(
+            receiptId: receiptId,
+            userId: uid,
+            items: items,
+            total: total,
+            soldAt: soldAt,
+          ));
+      if (!mounted) return;
+      if (!saved) {
+        // Could not even save it on the phone: keep the cart so nothing is lost.
+        setState(() => _saving = false);
+        _showMessage('Could not save the sale. Check your connection and try again.');
+        return;
+      }
+      setState(() {
+        _saving = false;
+        // Show the lower stock straight away (it is applied again on every reload).
+        for (final l in _cart.values) {
+          l.product.stockQuantity = math.max(0, l.product.stockQuantity - l.quantity);
+        }
+        _cart.clear();
+      });
+      _showMessage('No connection: sale saved on this phone and will sync automatically',
+          success: true);
+      return;
+    }
+
     setState(() => _saving = false);
-    if (error == null) {
+    if (result.outcome == SaleOutcome.saved) {
       setState(_cart.clear);
       _showMessage('Cash sale recorded', success: true);
+      SyncService().sync(); // send anything that was waiting
     } else {
-      _showMessage('Sale not recorded: $error');
+      _showMessage('Sale not recorded: ${result.message}');
     }
     await _fetchProducts(); // stock may have changed
   }
@@ -303,6 +382,10 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
   /// M-Pesa / Tigo Pesa / Airtel Money / card via Pesapal.
   /// The server records the sale only after Pesapal confirms payment, so do NOT call recordSale here.
   Future<void> _mobileSale() async {
+    if (!SyncService().online) {
+      _showMessage('Mobile / Card payments need an internet connection');
+      return;
+    }
     if (!_validateCart()) return;
     final phone = await _askPhone();
     if (phone == null || !mounted) return; // cancelled
@@ -356,11 +439,34 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                const PendingSyncBanner(),
+                if (_usingCache) _cacheNotice(),
                 _buildSearchBar(),
                 Expanded(child: _results.isNotEmpty ? _buildResults() : _buildCart()),
                 if (!keyboardOpen) _buildPayPanel(),
               ],
             ),
+    );
+  }
+
+  Widget _cacheNotice() {
+    return Container(
+      width: double.infinity,
+      color: Colors.amber[100],
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Icon(Icons.wifi_off, size: 18, color: Colors.amber[900]),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Offline: using your saved product list. Cash sales are saved on '
+              'this phone and sent later.',
+              style: TextStyle(fontSize: 12, color: Colors.amber[900]),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -575,7 +681,9 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                       child: SizedBox(
                         height: 50,
                         child: ElevatedButton.icon(
-                          onPressed: _cart.isEmpty ? null : _mobileSale,
+                          onPressed: (_cart.isEmpty || !SyncService().online)
+                              ? null
+                              : _mobileSale,
                           icon: const Icon(Icons.smartphone),
                           label: const Text('Mobile / Card',
                               style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
@@ -589,6 +697,12 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                       ),
                     ),
                   ],
+                ),
+              if (!_saving && !SyncService().online)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('Mobile / Card needs internet',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                 ),
             ],
           ),
