@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../screens/auth_screen.dart';
+import '../services/offline_store.dart';
 
-/// True if a user is currently logged in.
-bool get isLoggedIn => Supabase.instance.client.auth.currentSession != null;
+/// True if a user is currently logged in. A phone that was started without
+/// internet may not have restored the login yet; it still counts as logged in
+/// (remembered from the last time) until the user signs out.
+bool get isLoggedIn =>
+    Supabase.instance.client.auth.currentSession != null ||
+    OfflineIdentity.isRemembered;
 
 /// Call this before any action that needs an account (making a sale,
 /// opening inventory, etc).
