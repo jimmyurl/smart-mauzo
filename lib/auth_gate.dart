@@ -37,6 +37,7 @@ class _AuthGateState extends State<AuthGate> {
   void initState() {
     super.initState();
     _session = _svc.session;
+    ShopService.shopChanged.addListener(_onShopChanged);
     if (_userId != null) _shop = _loadShop();
     _sub = _svc.authChanges.listen(
       (state) {
@@ -72,8 +73,13 @@ class _AuthGateState extends State<AuthGate> {
 
   void _reloadShop() => setState(() => _shop = _loadShop());
 
+  void _onShopChanged() {
+    if (mounted && _userId != null) _reloadShop();
+  }
+
   @override
   void dispose() {
+    ShopService.shopChanged.removeListener(_onShopChanged);
     _sub?.cancel();
     super.dispose();
   }
