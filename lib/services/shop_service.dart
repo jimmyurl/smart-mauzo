@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utils/phone_auth.dart';
+import 'offline_store.dart';
 
 class ShopInfo {
   final String id;
@@ -24,6 +25,42 @@ class ShopInfo {
         role: j['role'] as String,
         joinCode: j['join_code'] as String?,
         isSuperAdmin: (j['is_super_admin'] as bool?) ?? false,
+      );
+}
+
+/// One person in the owner's shop (from sm_shop_team, owners only).
+class TeamMember {
+  final String userId;
+  final String email; // for phone accounts this is a made-up address, see [label]
+  final String role; // 'owner' | 'cashier'
+  final DateTime joinedAt;
+  final int salesCount; // number of sales (a whole cart counts once)
+  final double salesTotal;
+  final DateTime? lastSale;
+
+  TeamMember({
+    required this.userId,
+    required this.email,
+    required this.role,
+    required this.joinedAt,
+    required this.salesCount,
+    required this.salesTotal,
+    this.lastSale,
+  });
+
+  bool get isOwner => role == 'owner';
+
+  /// What to show as the person's name: their phone number (or email).
+  String get label => PhoneAuth.phoneFromEmail(email) ?? email;
+
+  factory TeamMember.fromJson(Map<String, dynamic> j) => TeamMember(
+        userId: j['user_id'] as String,
+        email: (j['email'] as String?) ?? '',
+        role: j['role'] as String,
+        joinedAt: DateTime.parse(j['joined_at'] as String),
+        salesCount: (j['sales_count'] as num?)?.toInt() ?? 0,
+        salesTotal: (j['sales_total'] as num?)?.toDouble() ?? 0,
+        lastSale: j['last_sale'] == null ? null : DateTime.parse(j['last_sale'] as String),
       );
 }
 
@@ -65,7 +102,29 @@ class ShopService {
   Future<ShopInfo?> myShop() async {
     final r = await _c.rpc('sm_my_shop');
     if (r == null) return null;
-    return ShopInfo.fromJson(Map<String, dynamic>.from(r as Map));
+    final shop = ShopInfo.fromJson(Map<String, dynamic>.from(r as Map));
+    // Remember the role so owner-only screens also work without internet.
+    final uid = _c.auth.currentUser?.id;
+    if (uid != null) OfflineIdentity.setRole(uid, shop.role);
+    return shop;
+  }
+
+  /// Everyone in the owner's shop with their sales totals (owner only).
+  Future<List<TeamMember>> team() async {
+    final rows = await _c.rpc('sm_shop_team');
+    return [
+      for (final r in rows as List) TeamMember.fromJson(Map<String, dynamic>.from(r as Map))
+    ];
+  }
+
+  /// Takes a cashier out of the shop. Their past sales stay in the records.
+  Future<void> removeMember(String userId) =>
+      _c.rpc('sm_remove_member', params: {'p_user_id': userId});
+
+  /// Replaces the shop code; the old one stops working. Returns the new code.
+  Future<String> newJoinCode() async {
+    final r = await _c.rpc('sm_new_join_code');
+    return r as String;
   }
 
   Future<void> createShop(String name) => _c.rpc('sm_create_shop', params: {'p_name': name});
