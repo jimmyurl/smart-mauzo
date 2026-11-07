@@ -56,6 +56,80 @@ class PendingSale {
       );
 }
 
+/// Remembers who is signed in on this phone, and whether they already have a shop,
+/// so the app can open without internet. Cleared on sign-out.
+class OfflineIdentity {
+  static const _key = 'sm_identity_v1';
+  static String? _userId;
+  static bool _hasShop = false;
+  static String? _refreshToken;
+
+  static String? get userId => _userId;
+  static bool get isRemembered => _userId != null;
+  static String? get refreshToken => _refreshToken;
+  static bool hasShop(String uid) => _userId == uid && _hasShop;
+
+  /// Call once at start-up, before the app is shown.
+  static Future<void> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_key);
+      if (raw == null) return;
+      final m = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      _userId = m['uid'] as String?;
+      _hasShop = m['has_shop'] == true;
+      _refreshToken = m['refresh'] as String?;
+    } catch (e) {
+      debugPrint('Could not read the remembered sign-in: $e');
+    }
+  }
+
+  /// Call for every auth event: remembers a live session, forgets on sign-out.
+  static void onAuth(AuthState state) {
+    if (state.event == AuthChangeEvent.signedOut) {
+      forget();
+    } else if (state.session != null) {
+      rememberSession(state.session!);
+    }
+  }
+
+  static void rememberSession(Session s) {
+    if (_userId != s.user.id) _hasShop = false;
+    _userId = s.user.id;
+    _refreshToken = s.refreshToken;
+    _save();
+  }
+
+  static Future<void> setHasShop(String uid, bool value) async {
+    if (_userId != uid) return;
+    _hasShop = value;
+    await _save();
+  }
+
+  static void forget() {
+    _userId = null;
+    _hasShop = false;
+    _refreshToken = null;
+    _save();
+  }
+
+  static Future<void> _save() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_userId == null) {
+        await prefs.remove(_key);
+        return;
+      }
+      await prefs.setString(
+        _key,
+        jsonEncode({'uid': _userId, 'has_shop': _hasShop, 'refresh': _refreshToken}),
+      );
+    } catch (e) {
+      debugPrint('Could not save the remembered sign-in: $e');
+    }
+  }
+}
+
 /// Small wrapper around SharedPreferences: the offline copy of the product list
 /// and the queue of sales that have not reached the server yet.
 class OfflineStore {
@@ -63,7 +137,8 @@ class OfflineStore {
   static const _kFailed = 'sm_offline_failed_v1';
   static String _kProducts(String uid) => 'sm_offline_products_v1_$uid';
 
-  String? get _uid => Supabase.instance.client.auth.currentUser?.id;
+  String? get _uid =>
+      Supabase.instance.client.auth.currentUser?.id ?? OfflineIdentity.userId;
 
   // ---------------------------------------------------------------- products
   /// Saves the product list as it is right now. The text is built before the first
