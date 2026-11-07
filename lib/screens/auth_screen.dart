@@ -18,6 +18,8 @@ class _AuthScreenState extends State<AuthScreen> {
   final _phone = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
+  final _code = TextEditingController();
+  bool _isCashier = false; // false: shop owner (phone + password), true: cashier (code only)
   bool _isLogin = true;
   bool _obscure = true;
   bool _busy = false;
@@ -27,6 +29,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _phone.dispose();
     _password.dispose();
     _confirm.dispose();
+    _code.dispose();
     super.dispose();
   }
 
@@ -55,7 +58,11 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() => _busy = true);
     try {
       final phone = _phone.text.trim();
-      if (_isLogin) {
+      if (_isCashier) {
+        // Cashier: the code is the only thing needed.
+        await _svc.cashierLogin(_code.text);
+        _close();
+      } else if (_isLogin) {
         await _svc.signInWithPhone(phone, _password.text);
         // Logged in: AuthGate reacts to the new session. Close this prompt.
         _close();
@@ -72,6 +79,8 @@ class _AuthScreenState extends State<AuthScreen> {
         }
       }
     } on FormatException catch (e) {
+      _msg(e.message);
+    } on PostgrestException catch (e) {
       _msg(e.message);
     } on AuthException catch (e) {
       final m = e.message.toLowerCase();
@@ -131,9 +140,54 @@ class _AuthScreenState extends State<AuthScreen> {
                           .headlineMedium
                           ?.copyWith(fontWeight: FontWeight.bold, color: blue)),
                   const SizedBox(height: 4),
-                  Text(_isLogin ? 'Log in to your shop' : 'Create your account',
-                      textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[600])),
-                  const SizedBox(height: 32),
+                  Text(
+                      _isCashier
+                          ? 'Cashier login'
+                          : (_isLogin ? 'Log in to your shop' : 'Create your account'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey[600])),
+                  const SizedBox(height: 24),
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(
+                          value: false, icon: Icon(Icons.storefront), label: Text('Shop owner')),
+                      ButtonSegment(
+                          value: true, icon: Icon(Icons.badge_outlined), label: Text('Cashier')),
+                    ],
+                    selected: {_isCashier},
+                    showSelectedIcon: false,
+                    onSelectionChanged: _busy
+                        ? null
+                        : (v) => setState(() {
+                              _isCashier = v.first;
+                              _formKey.currentState?.reset();
+                            }),
+                  ),
+                  const SizedBox(height: 24),
+                  if (_isCashier) ...[
+                    TextFormField(
+                      controller: _code,
+                      textCapitalization: TextCapitalization.characters,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      style: const TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 3),
+                      textAlign: TextAlign.center,
+                      decoration: InputDecoration(
+                        labelText: 'Your cashier code',
+                        hintText: 'ABCD-EFGH',
+                        helperText: 'Your shop owner gives you this code.\n'
+                            'No phone number or password needed.',
+                        helperMaxLines: 2,
+                        prefixIcon: const Icon(Icons.vpn_key_outlined),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      validator: (v) => ShopService.normalizeCode(v ?? '').length == 8
+                          ? null
+                          : 'Enter the 8-character code',
+                      onFieldSubmitted: (_) => _busy ? null : _submit(),
+                    ),
+                  ] else ...[
                   TextFormField(
                     controller: _phone,
                     keyboardType: TextInputType.phone,
@@ -185,6 +239,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     Text('At least 8 characters, 1 capital letter and 1 number.',
                         style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                   ],
+                  ],
                   const SizedBox(height: 24),
                   SizedBox(
                     height: 50,
@@ -200,16 +255,17 @@ class _AuthScreenState extends State<AuthScreen> {
                               width: 22,
                               height: 22,
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : Text(_isLogin ? 'Log in' : 'Sign up',
+                          : Text(_isCashier || _isLogin ? 'Log in' : 'Sign up',
                               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                   ),
-                  TextButton(
-                    onPressed: _busy ? null : () => setState(() => _isLogin = !_isLogin),
-                    child: Text(_isLogin
-                        ? "New here? Create an account"
-                        : 'Already have an account? Log in'),
-                  ),
+                  if (!_isCashier)
+                    TextButton(
+                      onPressed: _busy ? null : () => setState(() => _isLogin = !_isLogin),
+                      child: Text(_isLogin
+                          ? "New here? Create an account"
+                          : 'Already have an account? Log in'),
+                    ),
                 ],
               ),
             ),
