@@ -2,6 +2,20 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/product.dart';
 import '../models/sale.dart';
+import 'offline_store.dart';
+
+/// What happened when a cart sale was sent to the server.
+enum SaleOutcome {
+  saved, // recorded (or the server already had this receipt)
+  network, // no connection, timeout or session problem: safe to try again later
+  rejected, // the server answered and refused it ([SaleResult.message] says why)
+}
+
+class SaleResult {
+  final SaleOutcome outcome;
+  final String? message;
+  const SaleResult(this.outcome, [this.message]);
+}
 
 class SupabaseService {
   // ===================================================================
@@ -52,7 +66,11 @@ class SupabaseService {
   Future<List<Product>> getProducts() async {
     try {
       final response = await client.from(_products).select().order('title');
-      return response.map<Product>((json) => Product.fromJson(json)).toList();
+      final products =
+          response.map<Product>((json) => Product.fromJson(json)).toList();
+      // Keep an offline copy fresh every time products load (not awaited).
+      OfflineStore().saveProducts(products);
+      return products;
     } catch (e) {
       debugPrint('Error fetching products: $e');
       throw 'Failed to fetch products: $e';
@@ -189,6 +207,55 @@ class SupabaseService {
       debugPrint('Error recording cart sale: $e');
       return '$e';
     }
+  }
+
+  /// Cash sale of a cart, safe to send more than once. [receiptId] is made on the
+  /// phone; the server ignores a receipt it already recorded. [soldAt] is when the
+  /// sale really happened. [offline] is true only for a sale that was kept on the
+  /// phone and is being sent later: it is recorded even if stock ran out meanwhile.
+  Future<SaleResult> submitCartSale({
+    required List<Map<String, dynamic>> items,
+    required String receiptId,
+    required DateTime soldAt,
+    bool offline = false,
+  }) async {
+    try {
+      await client.rpc('sm_record_sale_cart', params: {
+        'p_items': items,
+        'p_receipt_id': receiptId,
+        'p_sold_at': soldAt.toUtc().toIso8601String(),
+        'p_offline': offline,
+      }).timeout(const Duration(seconds: 20));
+      return const SaleResult(SaleOutcome.saved);
+    } on PostgrestException catch (e) {
+      debugPrint('Error recording cart sale: ${e.message}');
+      if (_isTransient(e)) return SaleResult(SaleOutcome.network, e.message);
+      return SaleResult(SaleOutcome.rejected, e.message);
+    } on AuthException catch (e) {
+      // Not signed in right now: keep the sale and try again later.
+      return SaleResult(SaleOutcome.network, e.message);
+    } catch (e) {
+      // SocketException, TimeoutException, ClientException ...: no usable connection.
+      debugPrint('Cart sale not sent: $e');
+      return SaleResult(SaleOutcome.network, '$e');
+    }
+  }
+
+  /// Server-side problems that say nothing about the sale itself (gateway errors,
+  /// deadlocks, expired sign-in). The sale is kept and sent again later.
+  static bool _isTransient(PostgrestException e) {
+    final code = e.code ?? '';
+    final status = int.tryParse(code);
+    if (status != null && status >= 500) return true;
+    if (code == 'PGRST301' || code == 'PGRST303') return true; // JWT problems
+    if (code == '57014') return true; // statement timeout
+    if (code.startsWith('08') || // connection problems
+        code.startsWith('40') || // deadlock / serialization failure
+        code.startsWith('53') || // out of resources
+        code.startsWith('55')) { // lock not available
+      return true;
+    }
+    return e.message.contains('not signed in') || e.message.contains('JWT');
   }
 
   Future<List<Sale>> getRecentSales([int limit = 10]) async {
