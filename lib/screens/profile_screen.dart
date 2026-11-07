@@ -186,6 +186,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ),
         ),
+        const SizedBox(height: 8),
+        TextButton.icon(
+          onPressed: () => requireLogin(context, asCashier: true),
+          icon: const Icon(Icons.badge_outlined),
+          label: const Text("I'm a cashier: log in with my code"),
+        ),
       ],
     );
   }
