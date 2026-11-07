@@ -6,7 +6,14 @@ class Sale {
   final double total;
   final DateTime timestamp;
   final String paymentMethod; // 'cash' | 'mobile'
-  final double buyingPrice; // cost per unit at the moment of sale
+
+  /// Buying price per unit when the sale was made. 0 = unknown. Cashiers never
+  /// receive it (their app asks the server for every column except this one).
+  final double buyingPrice;
+
+  /// The user who made the sale. Null for sales made before cashier accounts
+  /// were tracked.
+  final String? soldBy;
 
   Sale({
     required this.id,
@@ -17,6 +24,7 @@ class Sale {
     required this.timestamp,
     this.paymentMethod = 'cash',
     this.buyingPrice = 0,
+    this.soldBy,
   });
 
   bool get isMobile => paymentMethod == 'mobile';
@@ -31,6 +39,7 @@ class Sale {
       'timestamp': timestamp.toIso8601String(),
       'payment_method': paymentMethod,
       'buying_price': buyingPrice,
+      'sold_by': soldBy,
     };
   }
 
@@ -43,7 +52,8 @@ class Sale {
       total: (json['total'] as num).toDouble(),
       timestamp: DateTime.parse(json['timestamp']),
       paymentMethod: json['payment_method'] ?? 'cash',
-      buyingPrice: double.tryParse('${json['buying_price'] ?? 0}') ?? 0,
+      buyingPrice: (json['buying_price'] as num?)?.toDouble() ?? 0,
+      soldBy: json['sold_by'] as String?,
     );
   }
 }
