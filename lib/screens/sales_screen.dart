@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import '../models/sale.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
+import '../services/offline_store.dart';
+import '../services/shop_service.dart';
 import '../services/sync_service.dart';
 import '../widgets/pending_sync_banner.dart';
 import 'new_sale_screen.dart';
@@ -30,11 +32,36 @@ class _SalesScreenState extends State<SalesScreen> {
   _Period _period = _Period.today;
   DateTimeRange? _customRange; // set when the user picks dates on the calendar
 
+  // Owner only: who made each sale, and an optional "show one person" filter.
+  List<TeamMember> _team = [];
+  String? _sellerFilter; // a user id, or null for everyone
+
   @override
   void initState() {
     super.initState();
     SyncService().syncedTick.addListener(_onSynced);
     _fetchSales();
+    _loadTeam();
+  }
+
+  /// Names of the people in the shop (owners only; cashiers only ever see their
+  /// own sales, so they need no names). Fails quietly when offline.
+  Future<void> _loadTeam() async {
+    if (!OfflineIdentity.isOwner) return;
+    try {
+      final team = await ShopService().team();
+      if (mounted) setState(() => _team = team);
+    } catch (_) {}
+  }
+
+  String _sellerName(String? userId) {
+    if (userId == null) return 'Before cashiers';
+    for (final m in _team) {
+      if (m.userId == userId) {
+        return userId == OfflineIdentity.userId ? 'You' : m.label;
+      }
+    }
+    return userId == OfflineIdentity.userId ? 'You' : 'Former cashier';
   }
 
   @override
@@ -147,6 +174,7 @@ class _SalesScreenState extends State<SalesScreen> {
       final t = s.timestamp.toLocal();
       if (start != null && t.isBefore(start)) return false;
       if (end != null && !t.isBefore(end)) return false;
+      if (_sellerFilter != null && s.soldBy != _sellerFilter) return false;
       return true;
     }).toList();
   }
@@ -159,13 +187,43 @@ class _SalesScreenState extends State<SalesScreen> {
     return DateFormat('EEE, d MMM yyyy').format(day);
   }
 
+  /// Owner only: choose whose sales to look at.
+  Widget _sellerBar() {
+    return SizedBox(
+      height: 48,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: const Text('Everyone'),
+              selected: _sellerFilter == null,
+              onSelected: (_) => setState(() => _sellerFilter = null),
+            ),
+          ),
+          for (final m in _team)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text(_sellerName(m.userId)),
+                selected: _sellerFilter == m.userId,
+                onSelected: (_) => setState(() => _sellerFilter = m.userId),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // ------------------------------------------------------------------- build
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       appBar: AppBar(
-        title: const Text('Sales'),
+        title: Text(OfflineIdentity.isOwner ? 'Sales' : 'My sales'),
         backgroundColor: _navy,
         foregroundColor: Colors.white,
         actions: [
@@ -180,6 +238,7 @@ class _SalesScreenState extends State<SalesScreen> {
       body: Column(
         children: [
           const PendingSyncBanner(),
+          if (OfflineIdentity.isOwner && _team.length > 1) _sellerBar(),
           Expanded(child: _buildBody()),
         ],
       ),
@@ -551,7 +610,8 @@ class _SalesScreenState extends State<SalesScreen> {
       subtitle: Text(
         '${sale.quantity} item${sale.quantity == 1 ? '' : 's'}  •  '
         '${DateFormat('HH:mm').format(sale.timestamp.toLocal())}  •  '
-        '${sale.isMobile ? 'Mobile/Card' : 'Cash'}',
+        '${sale.isMobile ? 'Mobile/Card' : 'Cash'}'
+        '${OfflineIdentity.isOwner ? '  •  ${_sellerName(sale.soldBy)}' : ''}',
       ),
       trailing: Text(tzs(sale.total), style: const TextStyle(fontWeight: FontWeight.bold)),
     );
