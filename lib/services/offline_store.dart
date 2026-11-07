@@ -63,6 +63,11 @@ class OfflineIdentity {
   static String? _userId;
   static bool _hasShop = false;
   static String? _refreshToken;
+  static String? _role; // 'owner' | 'cashier' (last known)
+
+  /// True only when this phone knows the signed-in person owns the shop. Unknown
+  /// counts as "not owner", so nothing owner-only is shown by mistake.
+  static bool get isOwner => _role == 'owner';
 
   static String? get userId => _userId;
   static bool get isRemembered => _userId != null;
@@ -79,6 +84,7 @@ class OfflineIdentity {
       _userId = m['uid'] as String?;
       _hasShop = m['has_shop'] == true;
       _refreshToken = m['refresh'] as String?;
+      _role = m['role'] as String?;
     } catch (e) {
       debugPrint('Could not read the remembered sign-in: $e');
     }
@@ -94,7 +100,10 @@ class OfflineIdentity {
   }
 
   static void rememberSession(Session s) {
-    if (_userId != s.user.id) _hasShop = false;
+    if (_userId != s.user.id) {
+      _hasShop = false;
+      _role = null;
+    }
     _userId = s.user.id;
     _refreshToken = s.refreshToken;
     _save();
@@ -106,9 +115,17 @@ class OfflineIdentity {
     await _save();
   }
 
+  /// Remembers the person's role in the shop (set whenever the shop is loaded).
+  static Future<void> setRole(String uid, String? role) async {
+    if (_userId != uid || _role == role) return;
+    _role = role;
+    await _save();
+  }
+
   static void forget() {
     _userId = null;
     _hasShop = false;
+    _role = null;
     _refreshToken = null;
     _save();
   }
@@ -122,7 +139,12 @@ class OfflineIdentity {
       }
       await prefs.setString(
         _key,
-        jsonEncode({'uid': _userId, 'has_shop': _hasShop, 'refresh': _refreshToken}),
+        jsonEncode({
+          'uid': _userId,
+          'has_shop': _hasShop,
+          'refresh': _refreshToken,
+          'role': _role,
+        }),
       );
     } catch (e) {
       debugPrint('Could not save the remembered sign-in: $e');
