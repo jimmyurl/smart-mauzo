@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import '../models/sale.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
+import '../services/sync_service.dart';
+import '../widgets/pending_sync_banner.dart';
 import 'new_sale_screen.dart';
 
 enum _Period { today, week, month, all, custom }
@@ -31,7 +33,19 @@ class _SalesScreenState extends State<SalesScreen> {
   @override
   void initState() {
     super.initState();
+    SyncService().syncedTick.addListener(_onSynced);
     _fetchSales();
+  }
+
+  @override
+  void dispose() {
+    SyncService().syncedTick.removeListener(_onSynced);
+    super.dispose();
+  }
+
+  /// Waiting sales just reached the server: reload the list.
+  void _onSynced() {
+    if (mounted) _fetchSales();
   }
 
   Future<void> _fetchSales() async {
@@ -163,7 +177,12 @@ class _SalesScreenState extends State<SalesScreen> {
           IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchSales),
         ],
       ),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          const PendingSyncBanner(),
+          Expanded(child: _buildBody()),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _newSale,
         backgroundColor: _navy,
