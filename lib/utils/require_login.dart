@@ -22,13 +22,15 @@ bool get isLoggedIn =>
 ///     if (!await requireLogin(context)) return;
 ///     // ...do the protected thing
 ///   }
-Future<bool> requireLogin(BuildContext context) async {
+///
+/// Pass [asCashier] to open the login page on the Cashier section (code only).
+Future<bool> requireLogin(BuildContext context, {bool asCashier = false}) async {
   if (isLoggedIn) return true;
 
   await Navigator.of(context).push(
     MaterialPageRoute(
       fullscreenDialog: true,
-      builder: (_) => const AuthScreen(),
+      builder: (_) => AuthScreen(startAsCashier: asCashier),
     ),
   );
 
