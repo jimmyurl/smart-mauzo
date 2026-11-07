@@ -89,11 +89,14 @@ class ShopService {
   String? get email => _c.auth.currentUser?.email;
   Stream<AuthState> get authChanges => _c.auth.onAuthStateChange;
 
-  Future<void> signIn(String email, String password) =>
-      _c.auth.signInWithPassword(email: email, password: password);
+  static const _authTimeout = Duration(seconds: 20);
+
+  Future<void> signIn(String email, String password) => _c.auth
+      .signInWithPassword(email: email, password: password)
+      .timeout(_authTimeout);
 
   Future<AuthResponse> signUp(String email, String password) =>
-      _c.auth.signUp(email: email, password: password);
+      _c.auth.signUp(email: email, password: password).timeout(_authTimeout);
 
   /// Phone + password login. [phone] can be typed any normal way (0712..., +255712...).
   /// Throws [FormatException] if the number is not valid.
@@ -112,7 +115,13 @@ class ShopService {
   /// The signed-in person's phone number (or email for older email accounts).
   String? get phoneOrEmail => PhoneAuth.phoneFromEmail(email) ?? email;
 
-  Future<void> signOut() => _c.auth.signOut();
+  /// The phone is signed out straight away; the server is told in the background,
+  /// so a bad connection can no longer keep the person waiting.
+  Future<void> signOut() async {
+    try {
+      await _c.auth.signOut().timeout(const Duration(seconds: 5));
+    } catch (_) {}
+  }
 
   /// The shop the signed-in user belongs to, or null if they have not created/joined one yet.
   Future<ShopInfo?> myShop() async {
@@ -168,7 +177,8 @@ class ShopService {
     if (code.length != 8) {
       throw const FormatException('Enter the 8-character code from your shop owner');
     }
-    final ok = await _c.rpc('sm_cashier_code_ok', params: {'p_code': code});
+    final ok = await _c
+        .rpc('sm_cashier_code_ok', params: {'p_code': code}).timeout(_authTimeout);
     if (ok != true) {
       throw const FormatException('Code not recognised. Check it with your shop owner.');
     }
@@ -179,24 +189,29 @@ class ShopService {
     SignupIntent.expectCashier();
     try {
       try {
-        await _c.auth.signInWithPassword(email: email, password: password);
+        await _c.auth
+            .signInWithPassword(email: email, password: password)
+            .timeout(_authTimeout);
       } on AuthException catch (e) {
         if (!e.message.toLowerCase().contains('invalid login')) rethrow;
         // First time this code is used: make its account.
-        final res = await _c.auth.signUp(email: email, password: password);
+        final res = await _c.auth
+            .signUp(email: email, password: password)
+            .timeout(_authTimeout);
         if (res.session == null) {
           throw const FormatException(
               'Sign-in is blocked: turn OFF "Confirm email" in Supabase '
               '(Authentication > Providers > Email).');
         }
       }
-      await _c.rpc('sm_claim_cashier_code', params: {'p_code': code});
+      await _c
+          .rpc('sm_claim_cashier_code', params: {'p_code': code}).timeout(_authTimeout);
       final uid = _c.auth.currentUser?.id;
       if (uid != null) await SignupIntent.markCashier(uid);
       shopChanged.value++;
     } catch (_) {
       SignupIntent.cancelPending();
-      if (_c.auth.currentSession != null) await _c.auth.signOut();
+      if (_c.auth.currentSession != null) await signOut();
       rethrow;
     }
   }
