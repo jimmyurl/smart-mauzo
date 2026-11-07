@@ -53,42 +53,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  /// Owner: replace the shop code. The old code stops working at once.
-  Future<void> _confirmNewCode() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Make a new shop code?'),
-        content: const Text(
-            'The old code will stop working. Cashiers who already joined are not affected.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Make new code')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      await _svc.newJoinCode();
-      if (!mounted) return;
-      await _reload();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('New shop code ready')));
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not make a new code. Check your internet.')));
-    }
-  }
-
-  void _copyCode(String code) {
-    Clipboard.setData(ClipboardData(text: code));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Shop code copied')),
-    );
-  }
-
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
@@ -294,21 +258,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: shop.name,
                   subtitle: shop.isOwner ? 'You own this shop' : 'You work here as a cashier',
                 ),
-                if (shop.isOwner && shop.joinCode != null) ...[
+                if (shop.isOwner) ...[
                   const SizedBox(height: 24),
-                  _sectionTitle('Add a cashier'),
-                  _shopCodeCard(shop.joinCode!),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: _confirmNewCode,
-                      icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('Make a new code'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
                   _sectionTitle('My cashiers'),
-                  _TeamSection(svc: _svc, onNewCode: _confirmNewCode),
+                  const _TeamSection(),
                 ],
                 if (!shop.isOwner) ...[
                   const SizedBox(height: 12),
@@ -397,73 +350,111 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-
-  Widget _shopCodeCard(String code) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.blue[100]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Give this code to your cashier. When they sign up they choose "I\'m a cashier" and type it in, and they join your shop straight away.',
-            style: TextStyle(fontSize: 13),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    code,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 4,
-                      color: Colors.blue[900],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              IconButton.filled(
-                onPressed: () => _copyCode(code),
-                style: IconButton.styleFrom(backgroundColor: Colors.blue[900]),
-                icon: const Icon(Icons.copy, color: Colors.white),
-                tooltip: 'Copy code',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-/// Owner only: the cashiers in the shop, what each has sold, and a way to remove one.
+/// Owner only: add cashiers (each gets a personal login code), see what each has
+/// sold, show a cashier's code again, or remove a cashier.
 class _TeamSection extends StatefulWidget {
-  final ShopService svc;
-  final VoidCallback onNewCode;
-  const _TeamSection({required this.svc, required this.onNewCode});
+  const _TeamSection();
 
   @override
   State<_TeamSection> createState() => _TeamSectionState();
 }
 
 class _TeamSectionState extends State<_TeamSection> {
-  late Future<List<TeamMember>> _future = widget.svc.team();
+  final _svc = ShopService();
+  late Future<List<TeamMember>> _future = _svc.team();
 
-  void _reload() => setState(() => _future = widget.svc.team());
+  void _reload() => setState(() => _future = _svc.team());
+
+  void _snack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _add() async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final c = TextEditingController();
+        return AlertDialog(
+          title: const Text('Add a cashier'),
+          content: TextField(
+            controller: c,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            maxLength: 40,
+            decoration: const InputDecoration(
+              labelText: "Cashier's name",
+              hintText: 'e.g. Asha',
+            ),
+            onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, c.text.trim()),
+                child: const Text('Create code')),
+          ],
+        );
+      },
+    );
+    if (name == null || name.isEmpty) return;
+    try {
+      final code = await _svc.addCashier(name);
+      if (!mounted) return;
+      _reload();
+      await _showCode(name, '${code.substring(0, 4)}-${code.substring(4)}');
+    } catch (_) {
+      _snack('Could not add the cashier. Check your internet and try again.');
+    }
+  }
+
+  Future<void> _showCode(String name, String pretty) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("$name's login code"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(pretty,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 4,
+                      color: Colors.blue[900])),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Give this code to $name only. On the login page they choose "Cashier" '
+              'and type the code. No phone number or password is needed.',
+              style: TextStyle(fontSize: 13),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: pretty));
+              Navigator.pop(ctx);
+              _snack('Code copied');
+            },
+            child: const Text('Copy'),
+          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done')),
+        ],
+      ),
+    );
+  }
 
   Future<void> _remove(TeamMember m) async {
     final ok = await showDialog<bool>(
@@ -471,7 +462,8 @@ class _TeamSectionState extends State<_TeamSection> {
       builder: (ctx) => AlertDialog(
         title: Text('Remove ${m.label}?'),
         content: const Text(
-            'They lose access to your shop straight away. Their past sales stay in your records.'),
+            'Their code stops working and they lose access straight away. '
+            'Their past sales stay in your records.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
@@ -483,20 +475,23 @@ class _TeamSectionState extends State<_TeamSection> {
     );
     if (ok != true) return;
     try {
-      await widget.svc.removeMember(m.userId);
+      if (m.code != null) {
+        await _svc.removeCashier(m.code!);
+      } else if (m.userId != null) {
+        await _svc.removeMember(m.userId!); // older phone-number cashier
+      }
       if (!mounted) return;
       _reload();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${m.label} removed'),
-        duration: const Duration(seconds: 8),
-        // They still know the old code, so offer a fresh one right away.
-        action: SnackBarAction(label: 'New shop code', onPressed: widget.onNewCode),
-      ));
+      _snack('${m.label} removed');
     } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not remove. Check your internet and try again.')));
+      _snack('Could not remove. Check your internet and try again.');
     }
+  }
+
+  String _status(TeamMember m) {
+    if (!m.claimed) return 'Not logged in yet';
+    if (m.salesCount == 0) return 'No sales yet';
+    return '${m.salesCount} sale${m.salesCount == 1 ? '' : 's'}  •  ${tzs(m.salesTotal)}';
   }
 
   @override
@@ -504,80 +499,95 @@ class _TeamSectionState extends State<_TeamSection> {
     return FutureBuilder<List<TeamMember>>(
       future: _future,
       builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snap.hasError) {
-          return Row(
-            children: [
-              Expanded(
-                child: Text('Could not load your cashiers.',
-                    style: TextStyle(color: Colors.grey[700])),
-              ),
-              TextButton(onPressed: _reload, child: const Text('Try again')),
-            ],
-          );
-        }
-        final cashiers = [for (final m in snap.data!) if (!m.isOwner) m];
-        if (cashiers.isEmpty) {
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              'No cashiers yet. Give them the shop code above. Each cashier sees only '
-              'the sales they make themselves.',
-              style: TextStyle(color: Colors.grey[700], fontSize: 13),
-            ),
-          );
-        }
+        final loading = snap.connectionState != ConnectionState.done;
+        final cashiers = [
+          for (final m in (snap.data ?? const <TeamMember>[])) if (!m.isOwner) m
+        ];
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final m in cashiers)
+            if (loading)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (snap.hasError)
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('Could not load your cashiers.',
+                        style: TextStyle(color: Colors.grey[700])),
+                  ),
+                  TextButton(onPressed: _reload, child: const Text('Try again')),
+                ],
+              )
+            else if (cashiers.isEmpty)
               Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.grey[100],
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(m.label,
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 2),
-                          Text(
-                            m.salesCount == 0
-                                ? 'No sales yet'
-                                : '${m.salesCount} sale${m.salesCount == 1 ? '' : 's'}  •  ${tzs(m.salesTotal)}',
-                            style: TextStyle(color: Colors.grey[800], fontSize: 13),
-                          ),
-                          Text(
-                            m.lastSale == null
-                                ? 'Joined ${DateFormat('d MMM yyyy').format(m.joinedAt.toLocal())}'
-                                : 'Last sale ${DateFormat('d MMM, HH:mm').format(m.lastSale!.toLocal())}',
-                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => _remove(m),
-                      icon: Icon(Icons.person_remove_outlined, color: Colors.red[700]),
-                      tooltip: 'Remove cashier',
-                    ),
-                  ],
+                child: Text(
+                  'No cashiers yet. Add one: they get their own code and see only the '
+                  'sales they make themselves.',
+                  style: TextStyle(color: Colors.grey[700], fontSize: 13),
                 ),
+              )
+            else
+              for (final m in cashiers)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 4, 10),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(m.label,
+                                style: const TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 2),
+                            Text(_status(m),
+                                style: TextStyle(color: Colors.grey[800], fontSize: 13)),
+                            Text(
+                              m.lastSale != null
+                                  ? 'Last sale ${DateFormat('d MMM, HH:mm').format(m.lastSale!.toLocal())}'
+                                  : 'Added ${DateFormat('d MMM yyyy').format(m.joinedAt.toLocal())}',
+                              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (m.prettyCode != null)
+                        IconButton(
+                          onPressed: () => _showCode(m.label, m.prettyCode!),
+                          icon: Icon(Icons.vpn_key_outlined, color: Colors.blue[900]),
+                          tooltip: 'Show login code',
+                        ),
+                      IconButton(
+                        onPressed: () => _remove(m),
+                        icon: Icon(Icons.person_remove_outlined, color: Colors.red[700]),
+                        tooltip: 'Remove cashier',
+                      ),
+                    ],
+                  ),
+                ),
+            const SizedBox(height: 4),
+            OutlinedButton.icon(
+              onPressed: loading ? null : _add,
+              icon: const Icon(Icons.person_add_alt_1),
+              label: const Text('Add a cashier'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.blue[900],
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
+            ),
           ],
         );
       },
