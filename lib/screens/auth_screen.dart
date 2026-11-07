@@ -6,7 +6,9 @@ import '../utils/phone_auth.dart';
 /// Login / sign-up screen. Opened on top of the app (via requireLogin) when a
 /// guest tries to do something that needs an account.
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  /// Open on the Cashier section (code only) instead of the Shop owner one.
+  final bool startAsCashier;
+  const AuthScreen({super.key, this.startAsCashier = false});
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -19,7 +21,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final _password = TextEditingController();
   final _confirm = TextEditingController();
   final _code = TextEditingController();
-  bool _isCashier = false; // false: shop owner (phone + password), true: cashier (code only)
+  late bool _isCashier = widget.startAsCashier; // false: owner (phone + password), true: cashier (code only)
   bool _isLogin = true;
   bool _obscure = true;
   bool _busy = false;
