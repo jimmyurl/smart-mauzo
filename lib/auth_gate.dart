@@ -2,13 +2,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/shop_setup_screen.dart';
+import 'services/offline_store.dart';
 import 'services/shop_service.dart';
+
+enum _ShopState { has, none }
 
 /// Decides what to show:
 ///   guest (no session)      -> the app in guest mode (login is requested
 ///                              only when they try to do something)
 ///   logged in, no shop      -> shop setup
 ///   logged in, has shop     -> the real app
+///
+/// Works without internet: if the server cannot be reached, a user who already
+/// had a shop the last time they were online goes straight into the app.
 class AuthGate extends StatefulWidget {
   final Widget home;
   const AuthGate({super.key, required this.home});
@@ -21,26 +27,50 @@ class _AuthGateState extends State<AuthGate> {
   final _svc = ShopService();
   StreamSubscription<AuthState>? _sub;
   Session? _session;
-  Future<ShopInfo?>? _shop;
+  Future<_ShopState>? _shop;
+
+  /// Signed in on this phone: a live session, or the user remembered from the
+  /// last online sign-in (when the app was started without internet).
+  String? get _userId => _session?.user.id ?? OfflineIdentity.userId;
 
   @override
   void initState() {
     super.initState();
     _session = _svc.session;
-    if (_session != null) _shop = _svc.myShop();
-    _sub = _svc.authChanges.listen((state) {
-      if (!mounted) return;
-      final newId = state.session?.user.id;
-      final changed = newId != _session?.user.id;
-      setState(() {
-        _session = state.session;
-        // Only reload the shop when the user actually changes (not on hourly token refresh).
-        if (changed) _shop = newId == null ? null : _svc.myShop();
-      });
-    });
+    if (_userId != null) _shop = _loadShop();
+    _sub = _svc.authChanges.listen(
+      (state) {
+        if (!mounted) return;
+        final before = _userId;
+        OfflineIdentity.onAuth(state);
+        setState(() {
+          _session = state.session;
+          // Only reload the shop when the user actually changes (not on hourly
+          // token refresh, and not when a remembered login is restored).
+          final now = _userId;
+          if (now != before) _shop = now == null ? null : _loadShop();
+        });
+      },
+      onError: (Object e) => debugPrint('Auth event error: $e'),
+    );
   }
 
-  void _reloadShop() => setState(() => _shop = _svc.myShop());
+  /// Asks the server whether this user has a shop. If the server cannot be
+  /// reached (or answers too slowly), trust what this phone remembers.
+  Future<_ShopState> _loadShop() async {
+    final uid = _userId;
+    try {
+      if (_svc.session == null) throw StateError('no live session yet');
+      final shop = await _svc.myShop().timeout(const Duration(seconds: 6));
+      if (uid != null) await OfflineIdentity.setHasShop(uid, shop != null);
+      return shop == null ? _ShopState.none : _ShopState.has;
+    } catch (e) {
+      if (uid != null && OfflineIdentity.hasShop(uid)) return _ShopState.has;
+      rethrow;
+    }
+  }
+
+  void _reloadShop() => setState(() => _shop = _loadShop());
 
   @override
   void dispose() {
@@ -52,9 +82,9 @@ class _AuthGateState extends State<AuthGate> {
   Widget build(BuildContext context) {
     // Guest: let them look around. Screens call requireLogin() when an
     // action needs an account.
-    if (_session == null) return widget.home;
+    if (_userId == null) return widget.home;
 
-    return FutureBuilder<ShopInfo?>(
+    return FutureBuilder<_ShopState>(
       future: _shop,
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
@@ -79,7 +109,7 @@ class _AuthGateState extends State<AuthGate> {
             ),
           );
         }
-        if (snap.data == null) return ShopSetupScreen(onDone: _reloadShop);
+        if (snap.data == _ShopState.none) return ShopSetupScreen(onDone: _reloadShop);
         return widget.home;
       },
     );
