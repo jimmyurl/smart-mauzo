@@ -27,12 +27,18 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
   List<PendingSale> _failed = [];
   bool _online = true;
   bool _syncing = false;
+  bool _restoring = false;
   bool _started = false;
 
   /// Goes up by one each time at least one waiting sale reached the server.
   final ValueNotifier<int> syncedTick = ValueNotifier<int>(0);
 
-  String? get _userId => Supabase.instance.client.auth.currentUser?.id;
+  /// The signed-in user, or (when the app was started without internet and the
+  /// login could not be restored yet) the user remembered from the last time.
+  String? get _userId =>
+      Supabase.instance.client.auth.currentUser?.id ?? OfflineIdentity.userId;
+
+  String? get userId => _userId;
 
   /// Only the entries of the signed-in user (a shared phone must never send one
   /// person's sales under another account).
@@ -82,6 +88,10 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
     if (_started) return;
     _started = true;
 
+    await OfflineIdentity.load();
+    final live = Supabase.instance.client.auth.currentSession;
+    if (live != null) OfflineIdentity.rememberSession(live);
+
     _queue = await _store.loadQueue();
     _failed = await _store.loadFailed();
     _online = _hasConnection(await Connectivity().checkConnectivity());
@@ -90,25 +100,55 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
       final wasOnline = _online;
       _online = _hasConnection(results);
       notifyListeners();
-      if (_online && !wasOnline) sync();
+      if (_online && !wasOnline) _wake();
     });
 
     // A different user signing in changes which queue entries belong to us.
-    Supabase.instance.client.auth.onAuthStateChange.listen((_) {
-      notifyListeners();
-      sync();
-    });
+    Supabase.instance.client.auth.onAuthStateChange.listen(
+      (state) {
+        OfflineIdentity.onAuth(state);
+        notifyListeners();
+        sync();
+      },
+      onError: (Object e) => debugPrint('Auth event error: $e'),
+    );
 
     WidgetsBinding.instance.addObserver(this);
-    Timer.periodic(const Duration(seconds: 60), (_) => sync());
+    Timer.periodic(const Duration(seconds: 60), (_) => _wake());
 
     notifyListeners();
-    sync();
+    _wake();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) sync();
+    if (state == AppLifecycleState.resumed) _wake();
+  }
+
+  /// Restore the login if needed, then send whatever is waiting.
+  Future<void> _wake() async {
+    await _ensureSession();
+    await sync();
+  }
+
+  /// When the app was started without internet the saved login may not have been
+  /// restored (the server could not be asked to renew it). Once we are online,
+  /// sign in again from the saved login. Returns true if there is a live session.
+  Future<bool> _ensureSession() async {
+    final auth = Supabase.instance.client.auth;
+    if (auth.currentSession != null) return true;
+    final token = OfflineIdentity.refreshToken;
+    if (token == null || !_online || _restoring) return false;
+    _restoring = true;
+    try {
+      await auth.setSession(token);
+      return auth.currentSession != null;
+    } catch (e) {
+      debugPrint('Could not sign in again yet: $e');
+      return false;
+    } finally {
+      _restoring = false;
+    }
   }
 
   /// Adds a sale to the queue. Returns false if it could not be saved on the phone
@@ -136,6 +176,8 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
     var sent = 0;
     try {
+      if (!await _ensureSession()) return 0; // not signed in yet: try again later
+
       for (final sale in _mine(_queue)) {
         final result = await _api.submitCartSale(
           items: sale.items,
