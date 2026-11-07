@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/sale.dart';
+import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
 
@@ -504,6 +505,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   // -------------------------------------------------------------- profit card
   Widget _profitCard(List<Sale> sales) {
+    // Profit is for the shop owner only; cashiers get no buying prices at all.
+    if (!OfflineIdentity.isOwner) return const SizedBox.shrink();
     final fin = _fin(sales);
 
     if (fin.known == 0) {
@@ -1172,7 +1175,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     valueColor: profit < 0 ? _lossColor : _profitColor),
                 _detailRow('Margin', '${margin.toStringAsFixed(1)}%',
                     valueColor: profit < 0 ? _lossColor : _profitColor),
-              ] else
+              ] else if (OfflineIdentity.isOwner)
                 _detailRow('Buying price', 'Not recorded'),
               _detailRow('Payment', sale.isMobile ? 'Mobile / Card' : 'Cash'),
               _detailRow('Date', DateFormat('EEE, d MMM yyyy').format(time)),
