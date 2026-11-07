@@ -410,7 +410,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Give this code to your cashier. After they sign up, they enter it to join your shop.',
+            'Give this code to your cashier. When they sign up they choose "I\'m a cashier" and type it in, and they join your shop straight away.',
             style: TextStyle(fontSize: 13),
           ),
           const SizedBox(height: 12),
