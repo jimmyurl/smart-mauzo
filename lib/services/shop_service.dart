@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 import '../utils/phone_auth.dart';
 import 'offline_store.dart';
 
@@ -127,7 +128,17 @@ class ShopService {
     return r as String;
   }
 
-  Future<void> createShop(String name) => _c.rpc('sm_create_shop', params: {'p_name': name});
+  /// Goes up each time this user creates or joins a shop, so AuthGate can look
+  /// again and open the app.
+  static final ValueNotifier<int> shopChanged = ValueNotifier<int>(0);
 
-  Future<void> joinShop(String code) => _c.rpc('sm_join_shop', params: {'p_code': code});
+  Future<void> createShop(String name) async {
+    await _c.rpc('sm_create_shop', params: {'p_name': name});
+    shopChanged.value++;
+  }
+
+  Future<void> joinShop(String code) async {
+    await _c.rpc('sm_join_shop', params: {'p_code': code.trim().toUpperCase()});
+    shopChanged.value++;
+  }
 }
