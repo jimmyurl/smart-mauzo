@@ -1116,7 +1116,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         subtitle: Text(
           '${order.productCount} products  •  ${order.itemCount} items  •  '
           '${DateFormat('HH:mm').format(order.time.toLocal())}  •  '
-          order.method.label,
+          '${order.method.label}',
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1182,7 +1182,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         '${sale.orderNo == null ? '' : 'Order ${orderLabel(sale.orderNo!)}  •  '}'
         '${sale.quantity} item${sale.quantity == 1 ? '' : 's'}  •  '
         '${DateFormat('HH:mm').format(sale.timestamp.toLocal())}  •  '
-        sale.method.label,
+        '${sale.method.label}',
       ),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
