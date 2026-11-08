@@ -314,6 +314,30 @@ class SupabaseService {
     }
   }
 
+  /// The server saves a credit sale like a cash sale. The credit book knows which
+  /// orders were on credit, so mark those sales here and every screen shows them
+  /// as "Credit". If the credit book cannot be read, sales are shown as before.
+  Future<List<Sale>> _markCreditSales(List<Sale> sales) async {
+    try {
+      final rows = await client
+          .from('sm_credit_entries')
+          .select('order_no')
+          .eq('kind', 'sale')
+          .timeout(const Duration(seconds: 10));
+      final credit = <int>{
+        for (final r in rows as List)
+          if ((r as Map)['order_no'] != null) (r['order_no'] as num).toInt()
+      };
+      if (credit.isEmpty) return sales;
+      return [
+        for (final s in sales)
+          (s.orderNo != null && credit.contains(s.orderNo)) ? s.withPaymentMethod('credit') : s
+      ];
+    } catch (_) {
+      return sales;
+    }
+  }
+
   Future<List<Sale>> fetchSales() async {
     try {
       _requireLiveSession();
@@ -324,7 +348,8 @@ class SupabaseService {
           : 'id,product_id,product_title,quantity,total,timestamp,payment_method,sold_by,order_no';
       final response =
           await client.from(_sales).select(columns).order('timestamp', ascending: false);
-      return response.map<Sale>((json) => Sale.fromJson(json)).toList();
+      final sales = response.map<Sale>((json) => Sale.fromJson(json)).toList();
+      return await _markCreditSales(sales);
     } catch (e) {
       debugPrint('Error fetching all sales: $e');
       throw friendlyError(e);
