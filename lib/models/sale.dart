@@ -15,6 +15,10 @@ class Sale {
   /// were tracked.
   final String? soldBy;
 
+  /// The shop's running order number (1, 2, 3 ...). Every item of one order has
+  /// the same number. Null only for a sale the server has not numbered yet.
+  final int? orderNo;
+
   Sale({
     required this.id,
     required this.productId,
@@ -25,6 +29,7 @@ class Sale {
     this.paymentMethod = 'cash',
     this.buyingPrice = 0,
     this.soldBy,
+    this.orderNo,
   });
 
   bool get isMobile => paymentMethod == 'mobile';
@@ -40,6 +45,7 @@ class Sale {
       'payment_method': paymentMethod,
       'buying_price': buyingPrice,
       'sold_by': soldBy,
+      'order_no': orderNo,
     };
   }
 
@@ -54,6 +60,7 @@ class Sale {
       paymentMethod: json['payment_method'] ?? 'cash',
       buyingPrice: (json['buying_price'] as num?)?.toDouble() ?? 0,
       soldBy: json['sold_by'] as String?,
+      orderNo: (json['order_no'] as num?)?.toInt(),
     );
   }
 }
