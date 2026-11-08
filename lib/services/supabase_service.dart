@@ -14,7 +14,10 @@ enum SaleOutcome {
 class SaleResult {
   final SaleOutcome outcome;
   final String? message;
-  const SaleResult(this.outcome, [this.message]);
+
+  /// The order number the server gave a saved sale (null if it could not be read).
+  final int? orderNo;
+  const SaleResult(this.outcome, [this.message, this.orderNo]);
 }
 
 class SupabaseService {
@@ -252,7 +255,20 @@ class SupabaseService {
         'p_sold_at': soldAt.toUtc().toIso8601String(),
         'p_offline': offline,
       }).timeout(const Duration(seconds: 20));
-      return const SaleResult(SaleOutcome.saved);
+
+      // Which number did this order get? (Only for the message; never fails the sale.)
+      int? orderNo;
+      try {
+        final row = await client
+            .from(_sales)
+            .select('order_no')
+            .eq('receipt_id', receiptId)
+            .limit(1)
+            .maybeSingle()
+            .timeout(const Duration(seconds: 8));
+        orderNo = (row?['order_no'] as num?)?.toInt();
+      } catch (_) {}
+      return SaleResult(SaleOutcome.saved, null, orderNo);
     } on PostgrestException catch (e) {
       debugPrint('Error recording cart sale: ${e.message}');
       if (_isTransient(e)) return SaleResult(SaleOutcome.network, e.message);
@@ -305,7 +321,7 @@ class SupabaseService {
       // limits them to the sales they made themselves.
       final columns = OfflineIdentity.isOwner
           ? '*'
-          : 'id,product_id,product_title,quantity,total,timestamp,payment_method,sold_by';
+          : 'id,product_id,product_title,quantity,total,timestamp,payment_method,sold_by,order_no';
       final response =
           await client.from(_sales).select(columns).order('timestamp', ascending: false);
       return response.map<Sale>((json) => Sale.fromJson(json)).toList();
