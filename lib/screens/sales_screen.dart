@@ -632,7 +632,7 @@ class _SalesScreenState extends State<SalesScreen> {
     final trailing =
         Text(tzs(order.total), style: const TextStyle(fontWeight: FontWeight.bold));
     final meta = '${DateFormat('HH:mm').format(order.time.toLocal())}  •  '
-        order.method.label
+        '${order.method.label}'
         '${OfflineIdentity.isOwner ? '  •  ${_sellerName(order.soldBy)}' : ''}';
     final number = order.number;
 
