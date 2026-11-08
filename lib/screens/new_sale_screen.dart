@@ -4,10 +4,12 @@ import 'package:uuid/uuid.dart';
 import 'barcode_scan_page.dart';
 import '../models/product.dart';
 import '../models/order.dart';
+import '../models/sale.dart';
 import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
 import '../services/sync_service.dart';
 import '../widgets/pending_sync_banner.dart';
+import '../widgets/receipt_sheet.dart';
 import '../utils/category_utils.dart';
 import '../utils/money.dart';
 import '../widgets/category_chips.dart';
@@ -70,7 +72,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     super.dispose();
   }
 
-  void _showMessage(String text, {bool success = false}) {
+  void _showMessage(String text, {bool success = false, Order? receipt}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -78,9 +80,35 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
         SnackBar(
           content: Text(text),
           backgroundColor: success ? Colors.green : null,
-          duration: const Duration(seconds: 2),
+          duration: Duration(seconds: receipt == null ? 2 : 8),
+          action: receipt == null
+              ? null
+              : SnackBarAction(
+                  label: 'RECEIPT',
+                  textColor: Colors.white,
+                  onPressed: () => showReceiptSheet(context, receipt),
+                ),
         ),
       );
+  }
+
+  /// The cart as an Order, so a receipt can be made after the cart is cleared.
+  Order _cartAsOrder(String receiptId, DateTime soldAt, int? orderNo) {
+    final uid = SyncService().userId;
+    var i = 0;
+    return Order([
+      for (final l in _cart.values)
+        Sale(
+          id: '$receiptId-${i++}',
+          productId: l.product.id,
+          productTitle: l.product.title,
+          quantity: l.quantity,
+          total: l.subtotal,
+          timestamp: soldAt,
+          soldBy: uid,
+          orderNo: orderNo,
+        ),
+    ]);
   }
 
   Future<void> _fetchProducts() async {
@@ -328,6 +356,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
         _showMessage('Could not save the sale. Check your connection and try again.');
         return;
       }
+      final offlineReceipt = _cartAsOrder(receiptId, soldAt, null);
       setState(() {
         _saving = false;
         // Show the lower stock straight away (it is applied again on every reload).
@@ -337,17 +366,18 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
         _cart.clear();
       });
       _showMessage('No connection: sale saved on this phone and will sync automatically',
-          success: true);
+          success: true, receipt: offlineReceipt);
       return;
     }
 
     setState(() => _saving = false);
     if (result.outcome == SaleOutcome.saved) {
-      setState(_cart.clear);
       final n = result.orderNo;
+      final receipt = _cartAsOrder(receiptId, soldAt, n);
+      setState(_cart.clear);
       _showMessage(
           n == null ? 'Cash sale recorded' : 'Order ${orderLabel(n)} recorded',
-          success: true);
+          success: true, receipt: receipt);
       SyncService().sync(); // send anything that was waiting
     } else {
       _showMessage('Sale not recorded: ${result.message}');
