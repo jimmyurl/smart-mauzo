@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../models/credit.dart';
 import '../models/order.dart';
 import '../models/sale.dart';
+import '../services/credit_service.dart';
 import '../services/offline_store.dart';
 import '../services/shop_service.dart';
 import '../services/supabase_service.dart';
@@ -26,8 +28,12 @@ class _SellerTotals {
   int items = 0;
   double cash = 0;
   double mobile = 0;
+  double credit = 0; // sold on credit (counted in cash above, but not collected)
+  double debtPaid = 0; // old debts paid back today
   _SellerTotals(this.userId);
   double get total => cash + mobile;
+  /// Cash that should be in the drawer.
+  double get cashInHand => cash - credit + debtPaid;
 }
 
 class _DailySummaryScreenState extends State<DailySummaryScreen> {
@@ -38,6 +44,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
   final SupabaseService _api = SupabaseService();
 
   List<Sale> _sales = [];
+  List<CreditEntry> _credit = [];
   List<TeamMember> _team = [];
   DateTime _day = DateTime.now();
   bool _loading = true;
@@ -49,6 +56,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
     SyncService().syncedTick.addListener(_onSynced);
     _load();
     _loadTeam();
+    _loadCredit();
   }
 
   @override
@@ -62,6 +70,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
   }
 
   Future<void> _load() async {
+    _loadCredit();
     try {
       final sales = await _api.fetchSales();
       if (!mounted) return;
@@ -76,6 +85,18 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
         _error = '$e';
         _loading = false;
       });
+    }
+  }
+
+  /// Credit sales and debt payments of the chosen day (empty if offline).
+  Future<void> _loadCredit() async {
+    final start = DateTime(_day.year, _day.month, _day.day);
+    try {
+      final list = await CreditService()
+          .entriesBetween(start, start.add(const Duration(days: 1)));
+      if (mounted) setState(() => _credit = list);
+    } catch (_) {
+      if (mounted) setState(() => _credit = []);
     }
   }
 
@@ -123,6 +144,14 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
     for (final o in Order.group(daySales)) {
       bySeller[o.soldBy]?.orders += 1;
     }
+    for (final e in _credit) {
+      final t = bySeller.putIfAbsent(e.createdBy, () => _SellerTotals(e.createdBy));
+      if (e.isSale) {
+        t.credit += e.amount;
+      } else {
+        t.debtPaid += e.amount;
+      }
+    }
     final list = bySeller.values.toList()..sort((a, b) => b.total.compareTo(a.total));
     return list;
   }
@@ -134,13 +163,17 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
     );
-    if (picked != null && mounted) setState(() => _day = picked);
+    if (picked != null && mounted) {
+      setState(() => _day = picked);
+      _loadCredit();
+    }
   }
 
   void _moveDay(int delta) {
     final next = DateTime(_day.year, _day.month, _day.day + delta);
     if (next.isAfter(DateTime.now())) return;
     setState(() => _day = next);
+    _loadCredit();
   }
 
   @override
@@ -220,12 +253,15 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
     }
 
     final daySales = _daySales;
-    if (daySales.isEmpty) {
+    if (daySales.isEmpty && _credit.isEmpty) {
       return const Center(child: Text('No sales on this day.'));
     }
 
     final totals = _totals(daySales);
-    final cash = totals.fold<double>(0, (s, t) => s + t.cash);
+    final sales = totals.fold<double>(0, (s, t) => s + t.total);
+    final cash = totals.fold<double>(0, (s, t) => s + t.cashInHand);
+    final creditGiven = totals.fold<double>(0, (s, t) => s + t.credit);
+    final debtPaid = totals.fold<double>(0, (s, t) => s + t.debtPaid);
     final mobile = totals.fold<double>(0, (s, t) => s + t.mobile);
     final orders = totals.fold<int>(0, (s, t) => s + t.orders);
     final items = totals.fold<int>(0, (s, t) => s + t.items);
@@ -237,7 +273,17 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _grandTotal(cash + mobile, cash, mobile, orders, items),
+          _grandTotal(sales, cash, mobile, orders, items),
+          if (creditGiven > 0 || debtPaid > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(
+                '${creditGiven > 0 ? 'Sold on credit ${tzs(creditGiven)} (not in cash)' : ''}'
+                '${creditGiven > 0 && debtPaid > 0 ? '  •  ' : ''}'
+                '${debtPaid > 0 ? 'Old debts paid ${tzs(debtPaid)} (in cash)' : ''}',
+                style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+              ),
+            ),
           if (waiting > 0)
             Padding(
               padding: const EdgeInsets.only(top: 10),
@@ -352,11 +398,21 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
             const SizedBox(height: 10),
             Row(
               children: [
-                Expanded(child: _splitTile('Cash', t.cash, _cashColor)),
+                Expanded(child: _splitTile('Cash', t.cashInHand, _cashColor)),
                 const SizedBox(width: 10),
                 Expanded(child: _splitTile('Mobile / Card', t.mobile, _mobileColor)),
               ],
             ),
+            if (t.credit > 0 || t.debtPaid > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  '${t.credit > 0 ? 'Credit ${tzs(t.credit)}' : ''}'
+                  '${t.credit > 0 && t.debtPaid > 0 ? '  •  ' : ''}'
+                  '${t.debtPaid > 0 ? 'Debts paid ${tzs(t.debtPaid)}' : ''}',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                ),
+              ),
           ],
         ),
       ),
