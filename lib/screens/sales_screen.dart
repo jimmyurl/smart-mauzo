@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../models/order.dart';
 import '../models/sale.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
@@ -366,7 +367,8 @@ class _SalesScreenState extends State<SalesScreen> {
   Widget _summaryCard(List<Sale> sales) {
     final revenue = sales.fold<double>(0, (s, e) => s + e.total);
     final items = sales.fold<int>(0, (s, e) => s + e.quantity);
-    final average = revenue / sales.length;
+    final orderCount = Order.group(sales).length;
+    final average = revenue / orderCount;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -395,7 +397,7 @@ class _SalesScreenState extends State<SalesScreen> {
           const SizedBox(height: 16),
           Row(
             children: [
-              _stat('Sales', '${sales.length}'),
+              _stat('Orders', '$orderCount'),
               _stat('Items sold', '$items'),
               _stat('Average', tzs(average)),
             ],
@@ -560,9 +562,9 @@ class _SalesScreenState extends State<SalesScreen> {
   // ------------------------------------------------------- grouped sales list
   List<Widget> _groupedList(List<Sale> sales) {
     // sales arrive newest first, so insertion order keeps days newest first.
-    final days = <DateTime, List<Sale>>{};
-    for (final s in sales) {
-      days.putIfAbsent(_startOfDay(s.timestamp.toLocal()), () => []).add(s);
+    final days = <DateTime, List<Order>>{};
+    for (final o in Order.group(sales)) {
+      days.putIfAbsent(_startOfDay(o.time.toLocal()), () => []).add(o);
     }
 
     final widgets = <Widget>[];
@@ -576,7 +578,7 @@ class _SalesScreenState extends State<SalesScreen> {
               child: Text(_dayLabel(day),
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
             ),
-            Text('${list.length} sale${list.length == 1 ? '' : 's'}  •  ${tzs(dayTotal)}',
+            Text('${list.length} order${list.length == 1 ? '' : 's'}  •  ${tzs(dayTotal)}',
                 style: TextStyle(color: Colors.grey[700], fontSize: 13)),
           ],
         ),
@@ -587,10 +589,11 @@ class _SalesScreenState extends State<SalesScreen> {
           borderRadius: BorderRadius.circular(16),
         ),
         margin: const EdgeInsets.only(bottom: 16),
+        clipBehavior: Clip.antiAlias,
         child: Column(
           children: [
             for (var i = 0; i < list.length; i++) ...[
-              _saleTile(list[i]),
+              _orderTile(list[i]),
               if (i != list.length - 1) const Divider(height: 1, indent: 68),
             ],
           ],
@@ -600,21 +603,88 @@ class _SalesScreenState extends State<SalesScreen> {
     return widgets;
   }
 
-  Widget _saleTile(Sale sale) {
-    final color = sale.isMobile ? _mobileColor : _cashColor;
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: color.withOpacity(0.12),
-        child: Icon(sale.isMobile ? Icons.smartphone : Icons.payments, color: color),
+  /// One row per order. An order with several products opens like an accordion
+  /// to show every item that was sold in it.
+  Widget _orderTile(Order order) {
+    final color = order.isMobile ? _mobileColor : _cashColor;
+    final avatar = CircleAvatar(
+      backgroundColor: color.withOpacity(0.12),
+      child: Icon(order.isMobile ? Icons.smartphone : Icons.payments, color: color),
+    );
+    final trailing =
+        Text(tzs(order.total), style: const TextStyle(fontWeight: FontWeight.bold));
+    final meta = '${DateFormat('HH:mm').format(order.time.toLocal())}  •  '
+        '${order.isMobile ? 'Mobile/Card' : 'Cash'}'
+        '${OfflineIdentity.isOwner ? '  •  ${_sellerName(order.soldBy)}' : ''}';
+    final number = order.number;
+
+    if (order.isSingle) {
+      final line = order.first;
+      return ListTile(
+        leading: avatar,
+        title: Text(line.productTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          '${number == null ? '' : 'Order $number  •  '}'
+          '${line.quantity} item${line.quantity == 1 ? '' : 's'}  •  $meta',
+        ),
+        trailing: trailing,
+      );
+    }
+
+    return Theme(
+      // no lines above and below the open tile
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        key: PageStorageKey<String>('order-${order.orderNo ?? order.first.id}'),
+        leading: avatar,
+        title: Text(number == null ? 'Order' : 'Order $number',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text('${order.productCount} products  •  ${order.itemCount} items  •  $meta'),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [trailing, const SizedBox(width: 4), const Icon(Icons.expand_more)],
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F6FA),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                for (final l in order.lines)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(l.productTitle,
+                                  maxLines: 2, overflow: TextOverflow.ellipsis),
+                              Text(
+                                '${l.quantity} × ${tzs(l.quantity > 0 ? l.total / l.quantity : l.total)}',
+                                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(tzs(l.total),
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
-      title: Text(sale.productTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-        '${sale.quantity} item${sale.quantity == 1 ? '' : 's'}  •  '
-        '${DateFormat('HH:mm').format(sale.timestamp.toLocal())}  •  '
-        '${sale.isMobile ? 'Mobile/Card' : 'Cash'}'
-        '${OfflineIdentity.isOwner ? '  •  ${_sellerName(sale.soldBy)}' : ''}',
-      ),
-      trailing: Text(tzs(sale.total), style: const TextStyle(fontWeight: FontWeight.bold)),
     );
   }
 
