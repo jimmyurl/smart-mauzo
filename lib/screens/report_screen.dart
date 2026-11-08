@@ -6,6 +6,7 @@ import '../models/sale.dart';
 import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
+import '../utils/payment_style.dart';
 
 enum _Period { today, week, month, year, custom }
 
@@ -833,15 +834,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   // ----------------------------------------------------------- payment split
   Widget _paymentSplit(List<Sale> sales) {
-    double cash = 0, mobile = 0;
+    double cash = 0, mobile = 0, credit = 0;
     for (final s in sales) {
-      if (s.isMobile) {
+      if (s.isCredit) {
+        credit += s.total;
+      } else if (s.isMobile) {
         mobile += s.total;
       } else {
         cash += s.total;
       }
     }
-    final total = cash + mobile;
+    final total = cash + mobile + credit;
 
     return _card(
       title: 'Payment methods',
@@ -862,6 +865,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       Expanded(
                           flex: (mobile * 1000 / total).round().clamp(1, 1000).toInt(),
                           child: Container(color: _mobileColor)),
+                    if (credit > 0)
+                      Expanded(
+                          flex: (credit * 1000 / total).round().clamp(1, 1000).toInt(),
+                          child: Container(color: kCreditColor)),
                   ],
                 ),
               ),
@@ -876,6 +883,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       'Mobile / Card', Icons.smartphone, _mobileColor, mobile, total)),
             ],
           ),
+          if (credit > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: _methodTile('Credit (not paid yet)', Icons.menu_book_outlined, kCreditColor, credit, total),
+            ),
         ],
       ),
     );
@@ -1087,7 +1099,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _orderTile(Order order) {
     if (order.isSingle) return _saleTile(order.first);
 
-    final color = order.isMobile ? _mobileColor : _cashColor;
+    final color = order.method.color;
     final profit = order.lines.fold<double>(0, (s, l) => s + _profitOf(l));
     final hasCost = order.lines.any(_hasCost);
     final number = order.number;
@@ -1097,14 +1109,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
         key: PageStorageKey<String>('order-${order.orderNo ?? order.first.id}'),
         leading: CircleAvatar(
           backgroundColor: color.withOpacity(0.12),
-          child: Icon(order.isMobile ? Icons.smartphone : Icons.payments, color: color),
+          child: Icon(order.method.icon, color: color),
         ),
         title: Text(number == null ? 'Order' : 'Order $number',
             style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(
           '${order.productCount} products  •  ${order.itemCount} items  •  '
           '${DateFormat('HH:mm').format(order.time.toLocal())}  •  '
-          '${order.isMobile ? 'Mobile/Card' : 'Cash'}',
+          order.method.label,
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1157,20 +1169,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _saleTile(Sale sale) {
-    final color = sale.isMobile ? _mobileColor : _cashColor;
+    final color = sale.method.color;
     final profit = _profitOf(sale);
     return ListTile(
       onTap: () => _showDetails(sale),
       leading: CircleAvatar(
         backgroundColor: color.withOpacity(0.12),
-        child: Icon(sale.isMobile ? Icons.smartphone : Icons.payments, color: color),
+        child: Icon(sale.method.icon, color: color),
       ),
       title: Text(sale.productTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(
         '${sale.orderNo == null ? '' : 'Order ${orderLabel(sale.orderNo!)}  •  '}'
         '${sale.quantity} item${sale.quantity == 1 ? '' : 's'}  •  '
         '${DateFormat('HH:mm').format(sale.timestamp.toLocal())}  •  '
-        '${sale.isMobile ? 'Mobile/Card' : 'Cash'}',
+        sale.method.label,
       ),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1190,7 +1202,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   // ------------------------------------------------------- transaction details
   void _showDetails(Sale sale) {
-    final color = sale.isMobile ? _mobileColor : _cashColor;
+    final color = sale.method.color;
     final id = '${sale.id}';
     final shortId = (id.length > 8 ? id.substring(id.length - 8) : id).toUpperCase();
     final time = sale.timestamp.toLocal();
@@ -1228,7 +1240,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 children: [
                   CircleAvatar(
                     backgroundColor: color.withOpacity(0.12),
-                    child: Icon(sale.isMobile ? Icons.smartphone : Icons.payments, color: color),
+                    child: Icon(sale.method.icon, color: color),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1255,7 +1267,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     valueColor: profit < 0 ? _lossColor : _profitColor),
               ] else if (OfflineIdentity.isOwner)
                 _detailRow('Buying price', 'Not recorded'),
-              _detailRow('Payment', sale.isMobile ? 'Mobile / Card' : 'Cash'),
+              _detailRow('Payment', sale.isCredit ? 'Credit (debt)' : (sale.isMobile ? 'Mobile / Card' : 'Cash')),
               _detailRow('Date', DateFormat('EEE, d MMM yyyy').format(time)),
               _detailRow('Time', DateFormat('HH:mm').format(time)),
               _detailRow(sale.orderNo == null ? 'Receipt' : 'Order',
