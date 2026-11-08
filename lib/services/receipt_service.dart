@@ -36,7 +36,8 @@ class ReceiptService {
 
   static String _unit(double total, int qty) => tzs(qty > 0 ? total / qty : total);
 
-  static String _payment(Order o) => o.isMobile ? 'Mobile / Card' : 'Cash';
+  static String _payment(Order o) =>
+      o.isCredit ? 'On credit' : (o.isMobile ? 'Mobile / Card' : 'Cash');
 
   /// Plain text. *Stars* make the shop name bold in WhatsApp.
   static String buildText(Order order, {required String shopName, String? servedBy}) {
