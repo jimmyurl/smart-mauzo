@@ -7,6 +7,7 @@ import '../models/sale.dart';
 import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
+import '../utils/payment_style.dart';
 import '../utils/require_login.dart';
 import 'credit_screen.dart';
 import 'daily_summary_screen.dart';
@@ -711,9 +712,9 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   Widget _orderTile(Order order) {
-    final method = order.isMobile ? 'Mobile/Card' : 'Cash';
-    final color = order.isMobile ? _mobileColor : _cashColor;
-    final icon = order.isMobile ? Icons.smartphone : Icons.payments;
+    final method = order.method.label;
+    final color = order.method.color;
+    final icon = order.method.icon;
     final number = order.number;
 
     if (order.isSingle) {
