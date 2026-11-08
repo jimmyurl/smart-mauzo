@@ -7,6 +7,7 @@ import '../utils/money.dart';
 import '../services/offline_store.dart';
 import '../services/shop_service.dart';
 import '../services/sync_service.dart';
+import '../widgets/receipt_sheet.dart';
 import '../widgets/pending_sync_banner.dart';
 import 'new_sale_screen.dart';
 
@@ -603,6 +604,11 @@ class _SalesScreenState extends State<SalesScreen> {
     return widgets;
   }
 
+  void _openReceipt(Order order) {
+    final who = OfflineIdentity.isOwner ? _sellerName(order.soldBy) : null;
+    showReceiptSheet(context, order, servedBy: who == 'You' ? null : who);
+  }
+
   /// One row per order. An order with several products opens like an accordion
   /// to show every item that was sold in it.
   Widget _orderTile(Order order) {
@@ -628,6 +634,7 @@ class _SalesScreenState extends State<SalesScreen> {
           '${line.quantity} item${line.quantity == 1 ? '' : 's'}  •  $meta',
         ),
         trailing: trailing,
+        onTap: () => _openReceipt(order),
       );
     }
 
@@ -681,6 +688,14 @@ class _SalesScreenState extends State<SalesScreen> {
                     ),
                   ),
               ],
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => _openReceipt(order),
+              icon: const Icon(Icons.receipt_long, size: 18),
+              label: const Text('Receipt'),
             ),
           ),
         ],
