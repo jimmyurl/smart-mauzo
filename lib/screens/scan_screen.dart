@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../models/order.dart';
 import '../models/product.dart';
 import '../models/sale.dart';
 import '../services/supabase_service.dart';
@@ -284,7 +285,7 @@ class _ScanScreenState extends State<ScanScreen> {
       children: [
         _buildSummaryCard(
           amount: tzs(todayRevenue),
-          orders: '${today.length}',
+          orders: '${Order.group(today).length}',
           items: '$itemsSold',
           change: _changeVsYesterday(todayRevenue, yesterdayRevenue),
           sample: false,
@@ -666,7 +667,8 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
-  /// The 5 newest real sales (fetchSales returns newest first).
+  /// The 5 newest orders (fetchSales returns newest first). One order = everything
+  /// sold in one checkout; an order with several products opens to list them.
   Widget _recentTransactions() {
     if (_sales.isEmpty) {
       return Padding(
@@ -688,17 +690,108 @@ class _ScanScreenState extends State<ScanScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
-        children: _sales.take(5).map((sale) {
-          return _transactionTile(
-            icon: sale.isMobile ? Icons.smartphone : Icons.payments,
-            iconColor: sale.isMobile ? _mobileColor : _cashColor,
-            title: sale.productTitle,
-            subtitle:
-                '${sale.quantity} item${sale.quantity == 1 ? '' : 's'}  •  ${sale.isMobile ? 'Mobile/Card' : 'Cash'}',
-            amount: tzs(sale.total),
-            time: _timeAgo(sale.timestamp),
-          );
-        }).toList(),
+        children: Order.group(_sales).take(5).map(_orderTile).toList(),
+      ),
+    );
+  }
+
+  Widget _orderTile(Order order) {
+    final method = order.isMobile ? 'Mobile/Card' : 'Cash';
+    final color = order.isMobile ? _mobileColor : _cashColor;
+    final icon = order.isMobile ? Icons.smartphone : Icons.payments;
+    final number = order.number;
+
+    if (order.isSingle) {
+      final line = order.first;
+      return _transactionTile(
+        icon: icon,
+        iconColor: color,
+        title: line.productTitle,
+        subtitle: '${number == null ? '' : 'Order $number  •  '}'
+            '${line.quantity} item${line.quantity == 1 ? '' : 's'}  •  $method',
+        amount: tzs(order.total),
+        time: _timeAgo(order.time),
+      );
+    }
+
+    // Several products: one card that opens to show every item sold.
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(15),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          key: PageStorageKey<String>('home-order-${order.orderNo ?? order.first.id}'),
+          shape: const Border(),
+          collapsedShape: const Border(),
+          tilePadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
+          childrenPadding: const EdgeInsets.fromLTRB(15, 0, 15, 12),
+          expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+          leading: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: color),
+          ),
+          title: Text(number == null ? 'Order' : 'Order $number',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Text(
+            '${order.productCount} products  •  ${order.itemCount} items  •  $method',
+            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(tzs(order.total),
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text(_timeAgo(order.time),
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                ],
+              ),
+              const SizedBox(width: 2),
+              const Icon(Icons.expand_more),
+            ],
+          ),
+          children: [
+            for (final l in order.lines)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(l.productTitle,
+                              maxLines: 2, overflow: TextOverflow.ellipsis),
+                          Text(
+                            '${l.quantity} × ${tzs(l.quantity > 0 ? l.total / l.quantity : l.total)}',
+                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(tzs(l.total),
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
