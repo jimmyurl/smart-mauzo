@@ -5,9 +5,11 @@ import 'barcode_scan_page.dart';
 import '../models/product.dart';
 import '../models/order.dart';
 import '../models/sale.dart';
+import '../services/credit_service.dart';
 import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
 import '../services/sync_service.dart';
+import '../widgets/customer_picker.dart';
 import '../widgets/pending_sync_banner.dart';
 import '../widgets/receipt_sheet.dart';
 import '../utils/category_utils.dart';
@@ -40,6 +42,12 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
   final Map<String, _CartLine> _cart = {}; // keyed by product id
   bool _loading = true;
   bool _saving = false;
+
+  // A credit sale that may have reached the server without us hearing back is
+  // retried with the same receipt id, so it can never be recorded twice.
+  String? _creditKey;
+  String? _creditReceiptId;
+  DateTime? _creditSoldAt;
   bool _keepScanning = true;
   bool _usingCache = false; // product list comes from the phone, not the server
   bool _fetching = false;
@@ -93,7 +101,8 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
   }
 
   /// The cart as an Order, so a receipt can be made after the cart is cleared.
-  Order _cartAsOrder(String receiptId, DateTime soldAt, int? orderNo) {
+  Order _cartAsOrder(String receiptId, DateTime soldAt, int? orderNo,
+      {String paymentMethod = 'cash'}) {
     final uid = SyncService().userId;
     var i = 0;
     return Order([
@@ -107,6 +116,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
           timestamp: soldAt,
           soldBy: uid,
           orderNo: orderNo,
+          paymentMethod: paymentMethod,
         ),
     ]);
   }
@@ -383,6 +393,83 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
       _showMessage('Sale not recorded: ${result.message}');
     }
     await _fetchProducts(); // stock may have changed
+  }
+
+  /// Sell the cart on credit to a customer. Needs internet (the debt and the
+  /// stock change are saved together on the server).
+  Future<void> _creditSale() async {
+    if (!SyncService().online) {
+      _showMessage('Credit sales need an internet connection');
+      return;
+    }
+    if (!_validateCart()) return;
+    final customer = await pickCustomer(context);
+    if (customer == null || !mounted) return;
+
+    final total = _total;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Sell on credit'),
+        content: Text("${tzs(total)} will be added to ${customer.name}'s debt."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Confirm')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    final items = <Map<String, dynamic>>[
+      for (final l in _cart.values) {'product_id': l.product.id, 'quantity': l.quantity}
+    ];
+    final lines = [for (final l in _cart.values) '${l.product.id}x${l.quantity}']..sort();
+    final key = '${customer.id}|${lines.join(',')}';
+    if (_creditKey != key) {
+      _creditKey = key;
+      _creditReceiptId = const Uuid().v4();
+      _creditSoldAt = DateTime.now();
+    }
+    final receiptId = _creditReceiptId!;
+    final soldAt = _creditSoldAt!;
+
+    setState(() => _saving = true);
+    try {
+      final orderNo = await CreditService().creditSale(
+        items: items,
+        customerId: customer.id,
+        receiptId: receiptId,
+        soldAt: soldAt,
+      );
+      if (!mounted) return;
+      final receipt = _cartAsOrder(receiptId, soldAt, orderNo, paymentMethod: 'credit');
+      _creditKey = null;
+      setState(() {
+        _saving = false;
+        _cart.clear();
+      });
+      _showMessage(
+        orderNo == null
+            ? 'Credit sale recorded for ${customer.name}'
+            : 'Order ${orderLabel(orderNo)} on credit for ${customer.name}',
+        success: true,
+        receipt: receipt,
+      );
+      SyncService().sync();
+      await _fetchProducts(); // stock changed
+    } on CreditRejected catch (e) {
+      _creditKey = null; // the server said no: nothing was recorded
+      if (!mounted) return;
+      setState(() => _saving = false);
+      _showMessage('Sale not recorded: ${e.message}');
+    } catch (_) {
+      // Unknown result (timeout, lost signal). Keep the same receipt id so that
+      // pressing the button again cannot record the sale twice.
+      if (!mounted) return;
+      setState(() => _saving = false);
+      _showMessage(
+          'Could not confirm the sale. Check your connection and press Credit again. It will not be recorded twice.');
+    }
   }
 
   Future<String?> _askPhone() {
@@ -731,10 +818,25 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                     ),
                   ],
                 ),
+              if (!_saving)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: OutlinedButton.icon(
+                      onPressed: (_cart.isEmpty || !SyncService().online)
+                          ? null
+                          : _creditSale,
+                      icon: const Icon(Icons.menu_book_outlined),
+                      label: const Text('Sell on credit (debt)'),
+                    ),
+                  ),
+                ),
               if (!_saving && !SyncService().online)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text('Mobile / Card needs internet',
+                  child: Text('Mobile / Card and Credit need internet',
                       style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                 ),
             ],
