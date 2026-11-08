@@ -535,19 +535,26 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   Widget _action(IconData icon, String label, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 26, color: Colors.blue[900]),
-            const SizedBox(height: 6),
-            Text(label,
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
-          ],
+    // Expanded: every button gets an equal share of the row, so the row always
+    // fits the screen however many buttons there are.
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 26, color: Colors.blue[900]),
+              const SizedBox(height: 6),
+              Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+            ],
+          ),
         ),
       ),
     );
