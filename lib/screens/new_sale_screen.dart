@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'barcode_scan_page.dart';
 import '../models/product.dart';
+import '../models/order.dart';
 import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
 import '../services/sync_service.dart';
@@ -343,7 +344,10 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     setState(() => _saving = false);
     if (result.outcome == SaleOutcome.saved) {
       setState(_cart.clear);
-      _showMessage('Cash sale recorded', success: true);
+      final n = result.orderNo;
+      _showMessage(
+          n == null ? 'Cash sale recorded' : 'Order ${orderLabel(n)} recorded',
+          success: true);
       SyncService().sync(); // send anything that was waiting
     } else {
       _showMessage('Sale not recorded: ${result.message}');
