@@ -1,3 +1,5 @@
+enum PayMethod { cash, mobile, credit }
+
 class Sale {
   final String id;
   final String productId;
@@ -33,6 +35,26 @@ class Sale {
   });
 
   bool get isMobile => paymentMethod == 'mobile';
+
+  /// Taken on credit (the customer owes the money). The server stores these
+  /// like cash sales; the app marks them by looking at the credit book.
+  bool get isCredit => paymentMethod == 'credit';
+
+  PayMethod get method =>
+      isCredit ? PayMethod.credit : (isMobile ? PayMethod.mobile : PayMethod.cash);
+
+  Sale withPaymentMethod(String method) => Sale(
+        id: id,
+        productId: productId,
+        productTitle: productTitle,
+        quantity: quantity,
+        total: total,
+        timestamp: timestamp,
+        paymentMethod: method,
+        buyingPrice: buyingPrice,
+        soldBy: soldBy,
+        orderNo: orderNo,
+      );
 
   Map<String, dynamic> toJson() {
     return {
