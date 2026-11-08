@@ -7,6 +7,7 @@ import '../models/sale.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
 import '../utils/require_login.dart';
+import 'daily_summary_screen.dart';
 import 'inventory_screen.dart';
 import 'new_sale_screen.dart';
 import 'report_screen.dart';
@@ -520,6 +521,8 @@ class _ScanScreenState extends State<ScanScreen> {
                 () => _openGuarded(const SalesScreen())),
             _action(Icons.assessment_outlined, 'Reports',
                 () => _openGuarded(const ReportsScreen())),
+            _action(Icons.today_outlined, 'Daily',
+                () => _openGuarded(const DailySummaryScreen())),
           ],
         ),
       ),
