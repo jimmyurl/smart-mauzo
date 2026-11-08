@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../models/order.dart';
 import '../models/sale.dart';
 import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
@@ -418,7 +419,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _summaryCard(List<Sale> sales) {
     final revenue = sales.fold<double>(0, (s, e) => s + e.total);
     final items = sales.fold<int>(0, (s, e) => s + e.quantity);
-    final average = revenue / sales.length;
+    final orderCount = Order.group(sales).length;
+    final average = revenue / orderCount;
     final prev = _previousSales.fold<double>(0, (s, e) => s + e.total);
 
     Widget comparison;
@@ -474,7 +476,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           const SizedBox(height: 16),
           Row(
             children: [
-              _stat('Sales', '${sales.length}'),
+              _stat('Orders', '$orderCount'),
               _stat('Items sold', '$items'),
               _stat('Average', tzs(average)),
             ],
@@ -1000,6 +1002,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   // ---------------------------------------------------------- transactions tab
   Widget _transactionsTab(List<Sale> sales) {
+    final orderCount = Order.group(sales).length;
     return RefreshIndicator(
       onRefresh: _fetchSales,
       child: ListView(
@@ -1012,7 +1015,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
               child: Text(
-                '${sales.length} transaction${sales.length == 1 ? '' : 's'}  •  $_periodLabel',
+                '$orderCount order${orderCount == 1 ? '' : 's'}  •  $_periodLabel',
                 style: TextStyle(color: Colors.grey[700], fontSize: 13),
               ),
             ),
@@ -1025,15 +1028,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   List<Widget> _groupedList(List<Sale> sales) {
     // sales arrive newest first, so insertion order keeps days newest first.
-    final days = <DateTime, List<Sale>>{};
-    for (final s in sales) {
-      days.putIfAbsent(_startOfDay(s.timestamp.toLocal()), () => []).add(s);
+    final days = <DateTime, List<Order>>{};
+    for (final o in Order.group(sales)) {
+      days.putIfAbsent(_startOfDay(o.time.toLocal()), () => []).add(o);
     }
 
     final widgets = <Widget>[];
     days.forEach((day, list) {
       final dayTotal = list.fold<double>(0, (s, e) => s + e.total);
-      final fin = _fin(list);
+      final fin = _fin([for (final o in list) ...o.lines]);
       widgets.add(Padding(
         padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
         child: Row(
@@ -1046,7 +1049,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('${list.length} sale${list.length == 1 ? '' : 's'}  •  ${tzs(dayTotal)}',
+                Text('${list.length} order${list.length == 1 ? '' : 's'}  •  ${tzs(dayTotal)}',
                     style: TextStyle(color: Colors.grey[700], fontSize: 13)),
                 if (fin.known > 0)
                   Text('Profit ${tzs(fin.profit)}',
@@ -1069,7 +1072,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         child: Column(
           children: [
             for (var i = 0; i < list.length; i++) ...[
-              _saleTile(list[i]),
+              _orderTile(list[i]),
               if (i != list.length - 1) const Divider(height: 1, indent: 68),
             ],
           ],
@@ -1077,6 +1080,80 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ));
     });
     return widgets;
+  }
+
+  /// One row per order. An order with several products opens like an accordion
+  /// to show every item sold in it; tap an item for its full details.
+  Widget _orderTile(Order order) {
+    if (order.isSingle) return _saleTile(order.first);
+
+    final color = order.isMobile ? _mobileColor : _cashColor;
+    final profit = order.lines.fold<double>(0, (s, l) => s + _profitOf(l));
+    final hasCost = order.lines.any(_hasCost);
+    final number = order.number;
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        key: PageStorageKey<String>('order-${order.orderNo ?? order.first.id}'),
+        leading: CircleAvatar(
+          backgroundColor: color.withOpacity(0.12),
+          child: Icon(order.isMobile ? Icons.smartphone : Icons.payments, color: color),
+        ),
+        title: Text(number == null ? 'Order' : 'Order $number',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(
+          '${order.productCount} products  •  ${order.itemCount} items  •  '
+          '${DateFormat('HH:mm').format(order.time.toLocal())}  •  '
+          '${order.isMobile ? 'Mobile/Card' : 'Cash'}',
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(tzs(order.total), style: const TextStyle(fontWeight: FontWeight.bold)),
+                if (hasCost)
+                  Text('+${tzs(profit)}',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: profit < 0 ? _lossColor : _profitColor)),
+              ],
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.expand_more),
+          ],
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F6FA),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (final l in order.lines)
+                  ListTile(
+                    dense: true,
+                    onTap: () => _showDetails(l),
+                    title: Text(l.productTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(
+                      '${l.quantity} × ${tzs(l.quantity > 0 ? l.total / l.quantity : l.total)}',
+                    ),
+                    trailing: Text(tzs(l.total),
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _saleTile(Sale sale) {
@@ -1090,6 +1167,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ),
       title: Text(sale.productTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(
+        '${sale.orderNo == null ? '' : 'Order ${orderLabel(sale.orderNo!)}  •  '}'
         '${sale.quantity} item${sale.quantity == 1 ? '' : 's'}  •  '
         '${DateFormat('HH:mm').format(sale.timestamp.toLocal())}  •  '
         '${sale.isMobile ? 'Mobile/Card' : 'Cash'}',
@@ -1180,7 +1258,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
               _detailRow('Payment', sale.isMobile ? 'Mobile / Card' : 'Cash'),
               _detailRow('Date', DateFormat('EEE, d MMM yyyy').format(time)),
               _detailRow('Time', DateFormat('HH:mm').format(time)),
-              _detailRow('Receipt', '#$shortId'),
+              _detailRow(sale.orderNo == null ? 'Receipt' : 'Order',
+                  sale.orderNo == null ? '#$shortId' : orderLabel(sale.orderNo!)),
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
