@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/shop_service.dart';
 import '../utils/money.dart';
 import '../utils/require_login.dart';
@@ -379,10 +380,12 @@ class _TeamSectionState extends State<_TeamSection> {
   }
 
   Future<void> _add() async {
+    // Created here, not inside the dialog, so the typed name survives the keyboard
+    // opening and closing.
+    final c = TextEditingController();
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) {
-        final c = TextEditingController();
         return AlertDialog(
           title: const Text('Add a cashier'),
           content: TextField(
@@ -405,14 +408,20 @@ class _TeamSectionState extends State<_TeamSection> {
         );
       },
     );
+    c.dispose();
     if (name == null || name.isEmpty) return;
     try {
       final code = await _svc.addCashier(name);
       if (!mounted) return;
       _reload();
       await _showCode(name, '${code.substring(0, 4)}-${code.substring(4)}');
+    } on PostgrestException catch (e) {
+      _snack(e.message);
     } catch (_) {
-      _snack('Could not add the cashier. Check your internet and try again.');
+      // The reply may have been lost after the server saved it: show the list again.
+      if (mounted) _reload();
+      _snack('The connection is weak, so we could not confirm. Look at the list '
+          'below: if $name is there, tap the key icon to see the code; if not, try again.');
     }
   }
 
