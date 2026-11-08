@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 import '../utils/phone_auth.dart';
 import 'offline_store.dart';
 import 'signup_intent.dart';
@@ -143,9 +144,28 @@ class ShopService {
   }
 
   /// Owner: adds a cashier by name and returns the cashier's login code.
+  ///
+  /// Safe on a weak connection: one request id is used for every try, and the
+  /// server returns the same cashier if it already saved an earlier try (so a lost
+  /// reply can never create a second cashier).
   Future<String> addCashier(String name) async {
-    final r = await _c.rpc('sm_add_cashier', params: {'p_name': name});
-    return r as String;
+    final requestId = const Uuid().v4();
+    Object? last;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final r = await _c.rpc('sm_add_cashier', params: {
+          'p_name': name,
+          'p_request_id': requestId,
+        }).timeout(const Duration(seconds: 20));
+        return r as String;
+      } on PostgrestException {
+        rethrow; // the server answered and refused: trying again will not help
+      } catch (e) {
+        last = e; // no usable connection: wait a moment and try again
+        await Future<void>.delayed(Duration(seconds: 1 + attempt));
+      }
+    }
+    throw last!;
   }
 
   /// Owner: removes a cashier who logs in with a code. The code stops working.
@@ -170,6 +190,38 @@ class ShopService {
 
   static String _cashierPassword(String code) => 'Mauzo-$code';
 
+  /// Signs in to the cashier's private account, making it the first time. Works
+  /// whether or not Supabase has "Confirm email" switched on: a cashier account is
+  /// confirmed by the database itself (sm_confirm_cashier_account).
+  Future<void> _signInCashier(String code, String email, String password) async {
+    Future<void> signIn() => _c.auth
+        .signInWithPassword(email: email, password: password)
+        .timeout(_authTimeout);
+    Future<void> confirm() => _c
+        .rpc('sm_confirm_cashier_account', params: {'p_code': code}).timeout(_authTimeout);
+
+    try {
+      await signIn();
+    } on AuthException catch (e) {
+      final m = e.message.toLowerCase();
+      if (m.contains('not confirmed')) {
+        await confirm();
+        await signIn();
+      } else if (m.contains('invalid login')) {
+        // First time this code is used: make its account.
+        final res = await _c.auth
+            .signUp(email: email, password: password)
+            .timeout(_authTimeout);
+        if (res.session == null) {
+          await confirm();
+          await signIn();
+        }
+      } else {
+        rethrow;
+      }
+    }
+  }
+
   /// Log in with only the code the owner gave. Throws [FormatException] with a
   /// message that is safe to show.
   Future<void> cashierLogin(String rawCode) async {
@@ -188,22 +240,7 @@ class ShopService {
     // Show the join-only screen (never "Create shop") from the moment we sign in.
     SignupIntent.expectCashier();
     try {
-      try {
-        await _c.auth
-            .signInWithPassword(email: email, password: password)
-            .timeout(_authTimeout);
-      } on AuthException catch (e) {
-        if (!e.message.toLowerCase().contains('invalid login')) rethrow;
-        // First time this code is used: make its account.
-        final res = await _c.auth
-            .signUp(email: email, password: password)
-            .timeout(_authTimeout);
-        if (res.session == null) {
-          throw const FormatException(
-              'Sign-in is blocked: turn OFF "Confirm email" in Supabase '
-              '(Authentication > Providers > Email).');
-        }
-      }
+      await _signInCashier(code, email, password);
       await _c
           .rpc('sm_claim_cashier_code', params: {'p_code': code}).timeout(_authTimeout);
       final uid = _c.auth.currentUser?.id;
