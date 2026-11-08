@@ -4,6 +4,7 @@ import '../models/order.dart';
 import '../models/sale.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
+import '../utils/payment_style.dart';
 import '../services/offline_store.dart';
 import '../services/shop_service.dart';
 import '../services/sync_service.dart';
@@ -429,15 +430,17 @@ class _SalesScreenState extends State<SalesScreen> {
 
   // ----------------------------------------------------------- payment split
   Widget _paymentSplit(List<Sale> sales) {
-    double cash = 0, mobile = 0;
+    double cash = 0, mobile = 0, credit = 0;
     for (final s in sales) {
-      if (s.isMobile) {
+      if (s.isCredit) {
+        credit += s.total;
+      } else if (s.isMobile) {
         mobile += s.total;
       } else {
         cash += s.total;
       }
     }
-    final total = cash + mobile;
+    final total = cash + mobile + credit;
 
     return _card(
       title: 'Payment methods',
@@ -458,6 +461,10 @@ class _SalesScreenState extends State<SalesScreen> {
                       Expanded(
                           flex: (mobile * 1000 / total).round().clamp(1, 1000).toInt(),
                           child: Container(color: _mobileColor)),
+                    if (credit > 0)
+                      Expanded(
+                          flex: (credit * 1000 / total).round().clamp(1, 1000).toInt(),
+                          child: Container(color: kCreditColor)),
                   ],
                 ),
               ),
@@ -472,6 +479,11 @@ class _SalesScreenState extends State<SalesScreen> {
                       'Mobile / Card', Icons.smartphone, _mobileColor, mobile)),
             ],
           ),
+          if (credit > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: _methodTile('Credit (not paid yet)', Icons.menu_book_outlined, kCreditColor, credit),
+            ),
         ],
       ),
     );
@@ -612,15 +624,15 @@ class _SalesScreenState extends State<SalesScreen> {
   /// One row per order. An order with several products opens like an accordion
   /// to show every item that was sold in it.
   Widget _orderTile(Order order) {
-    final color = order.isMobile ? _mobileColor : _cashColor;
+    final color = order.method.color;
     final avatar = CircleAvatar(
       backgroundColor: color.withOpacity(0.12),
-      child: Icon(order.isMobile ? Icons.smartphone : Icons.payments, color: color),
+      child: Icon(order.method.icon, color: color),
     );
     final trailing =
         Text(tzs(order.total), style: const TextStyle(fontWeight: FontWeight.bold));
     final meta = '${DateFormat('HH:mm').format(order.time.toLocal())}  •  '
-        '${order.isMobile ? 'Mobile/Card' : 'Cash'}'
+        order.method.label
         '${OfflineIdentity.isOwner ? '  •  ${_sellerName(order.soldBy)}' : ''}';
     final number = order.number;
 
