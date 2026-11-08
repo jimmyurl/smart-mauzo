@@ -19,6 +19,9 @@ class Order {
   DateTime get time => first.timestamp;
   String? get soldBy => first.soldBy;
   bool get isMobile => lines.any((l) => l.isMobile);
+  bool get isCredit => lines.any((l) => l.isCredit);
+  PayMethod get method =>
+      isCredit ? PayMethod.credit : (isMobile ? PayMethod.mobile : PayMethod.cash);
   bool get isSingle => lines.length == 1;
 
   int get productCount => lines.length;
