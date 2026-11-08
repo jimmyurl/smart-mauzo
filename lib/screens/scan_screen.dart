@@ -4,9 +4,11 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../models/order.dart';
 import '../models/product.dart';
 import '../models/sale.dart';
+import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
 import '../utils/require_login.dart';
+import 'credit_screen.dart';
 import 'daily_summary_screen.dart';
 import 'inventory_screen.dart';
 import 'new_sale_screen.dart';
@@ -523,6 +525,9 @@ class _ScanScreenState extends State<ScanScreen> {
                 () => _openGuarded(const ReportsScreen())),
             _action(Icons.today_outlined, 'Daily',
                 () => _openGuarded(const DailySummaryScreen())),
+            if (OfflineIdentity.isOwner)
+              _action(Icons.menu_book_outlined, 'Credit',
+                  () => _openGuarded(const CreditScreen())),
           ],
         ),
       ),
