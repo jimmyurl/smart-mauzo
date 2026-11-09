@@ -281,14 +281,31 @@ class SupabaseService {
     required String receiptId,
     required DateTime soldAt,
     bool offline = false,
+    String paymentMethod = 'cash', // 'cash' | 'lipa' (mobile money to the shop's own number)
+    String? payProvider,
+    String? payRef,
   }) async {
     try {
-      await client.rpc('sm_record_sale_cart', params: {
+      final params = <String, dynamic>{
         'p_items': items,
         'p_receipt_id': receiptId,
         'p_sold_at': soldAt.toUtc().toIso8601String(),
         'p_offline': offline,
-      }).timeout(const Duration(seconds: 20));
+      };
+      if (paymentMethod == 'cash') {
+        // Unchanged path for cash sales.
+        await client
+            .rpc('sm_record_sale_cart', params: params)
+            .timeout(const Duration(seconds: 20));
+      } else {
+        // Same sale, plus how it was paid (see mobile_money_own_till.sql).
+        await client.rpc('sm_record_sale_cart_v2', params: {
+          ...params,
+          'p_payment_method': paymentMethod,
+          'p_pay_provider': payProvider,
+          'p_pay_ref': (payRef == null || payRef.trim().isEmpty) ? null : payRef.trim(),
+        }).timeout(const Duration(seconds: 20));
+      }
 
       // Which number did this order get? (Only for the message; never fails the sale.)
       int? orderNo;
@@ -393,7 +410,7 @@ class SupabaseService {
       // limits them to the sales they made themselves.
       final columns = OfflineIdentity.isOwner
           ? '*'
-          : 'id,product_id,product_title,quantity,total,timestamp,payment_method,sold_by,order_no';
+          : 'id,product_id,product_title,quantity,total,timestamp,payment_method,pay_provider,pay_ref,sold_by,order_no';
       final response =
           await client.from(_sales).select(columns).order('timestamp', ascending: false);
       final sales = response.map<Sale>((json) => Sale.fromJson(json)).toList();
