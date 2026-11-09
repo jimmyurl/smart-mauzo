@@ -184,6 +184,9 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
           receiptId: sale.receiptId,
           soldAt: sale.soldAt,
           offline: true,
+          paymentMethod: sale.paymentMethod,
+          payProvider: sale.payProvider,
+          payRef: sale.payRef,
         );
         if (result.outcome == SaleOutcome.network) break; // still no connection
 
