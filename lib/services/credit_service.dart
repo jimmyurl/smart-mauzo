@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/credit.dart';
+import 'app_language.dart';
 
 /// The server answered and said no (for example "insufficient stock").
 /// Nothing was recorded.
@@ -21,7 +22,7 @@ class CreditService {
   SupabaseClient get _c => Supabase.instance.client;
 
   /// The text to show for any error.
-  static String message(Object e) => e is PostgrestException ? e.message : '$e';
+  static String message(Object e) => friendly(e);
 
   /// Everyone in the shop, A to Z (used to pick a customer at checkout).
   Future<List<Customer>> customers() async {
