@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/product.dart';
+import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
 import '../utils/category_utils.dart';
 import '../utils/money.dart';
@@ -7,6 +9,7 @@ import '../widgets/category_chips.dart';
 import '../widgets/category_field.dart';
 import 'add_product_screen.dart';
 import 'restock_screen.dart';
+import 'stock_alerts_screen.dart';
 
 /// Products: grouped by category, searchable, update stock, register new items.
 class InventoryScreen extends StatefulWidget {
@@ -126,6 +129,59 @@ class _InventoryScreenState extends State<InventoryScreen> {
     }
   }
 
+  Future<void> _openAlerts() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const StockAlertsScreen()),
+    );
+    if (mounted) _loadInventory();
+  }
+
+  /// Short note shown under a product that has expired or expires soon.
+  String _expiryNote(Product p) {
+    final d = p.daysToExpiry;
+    if (d == null || p.stockQuantity <= 0) return '';
+    if (d < 0) return '  •  EXPIRED';
+    if (d <= 30) return '  •  expires in $d day${d == 1 ? '' : 's'}';
+    return '';
+  }
+
+  Future<void> _editExpiry(Product product) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final first = today.subtract(const Duration(days: 365));
+    final current = product.expiryDate;
+    final picked = await showDatePicker(
+      context: context,
+      helpText: 'Expiry date of ${product.title}',
+      initialDate: (current != null && !current.isBefore(first))
+          ? current
+          : today.add(const Duration(days: 30)),
+      firstDate: first,
+      lastDate: today.add(const Duration(days: 3650)),
+    );
+    if (picked == null) return;
+    final ok = await _supabaseService.updateProductExpiry(product.id, picked);
+    if (!mounted) return;
+    if (ok) {
+      _msg('Expiry date saved', ok: true);
+      _loadInventory();
+    } else {
+      _msg('Could not save the expiry date. Has the stock_alerts.sql file been run? (Only the owner can do this.)');
+    }
+  }
+
+  Future<void> _clearExpiry(Product product) async {
+    final ok = await _supabaseService.updateProductExpiry(product.id, null);
+    if (!mounted) return;
+    if (ok) {
+      _msg('Expiry date removed', ok: true);
+      _loadInventory();
+    } else {
+      _msg('Could not remove the expiry date');
+    }
+  }
+
   Future<void> _openRestock(Product product) async {
     final suppliers = await _supabaseService.getSupplierNames();
     if (!mounted) return;
@@ -178,6 +234,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [
+          if (OfflineIdentity.isOwner)
+            IconButton(
+              icon: const Icon(Icons.notifications_active_outlined),
+              tooltip: 'Reorder list & expiry',
+              onPressed: _openAlerts,
+            ),
           if (_category == null && !_searching)
             IconButton(
               icon: Icon(_expanded.length >= groups.length
@@ -329,7 +391,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
         title: Text(product.title, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(
           '${tzs(product.price)}  •  ${product.stockQuantity} in stock'
-          '${product.stockQuantity <= 0 ? '  (out of stock)' : product.stockQuantity <= _lowStock ? '  (low)' : ''}',
+          '${product.stockQuantity <= 0 ? '  (out of stock)' : product.stockQuantity <= _lowStock ? '  (low)' : ''}'
+          '${_expiryNote(product)}',
           style: TextStyle(color: color),
         ),
         trailing: Row(
@@ -430,6 +493,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
             Text('Selling price: ${tzs(product.price)}'),
             Text('Profit per item: ${tzs(product.price - product.buyingPrice)}'),
             Text('Stock: ${product.stockQuantity}'),
+            Text('Expiry: ${product.expiryDate == null ? 'not set' : DateFormat('d MMM yyyy').format(product.expiryDate!)}'),
             if (product.description != null && product.description!.isNotEmpty)
               Text('Notes: ${product.description}'),
           ],
@@ -442,6 +506,21 @@ class _InventoryScreenState extends State<InventoryScreen> {
               _openRestock(product);
             },
           ),
+          TextButton(
+            child: Text(product.expiryDate == null ? 'Set expiry' : 'Change expiry'),
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _editExpiry(product);
+            },
+          ),
+          if (product.expiryDate != null)
+            TextButton(
+              child: const Text('Remove expiry'),
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _clearExpiry(product);
+              },
+            ),
           TextButton(
             child: const Text('Change category'),
             onPressed: () {
