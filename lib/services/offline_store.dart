@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/product.dart';
+import '../models/sale.dart';
 
 /// A cash sale that is waiting to reach the server.
 class PendingSale {
@@ -154,6 +155,13 @@ class OfflineIdentity {
 
 /// Small wrapper around SharedPreferences: the offline copy of the product list
 /// and the queue of sales that have not reached the server yet.
+/// The sales list saved on the phone, and when it was saved.
+class SavedSales {
+  final List<Sale> sales;
+  final DateTime? savedAt;
+  const SavedSales(this.sales, this.savedAt);
+}
+
 class OfflineStore {
   static const _kQueue = 'sm_offline_queue_v1';
   static const _kFailed = 'sm_offline_failed_v1';
@@ -191,6 +199,48 @@ class OfflineStore {
       ];
     } catch (e) {
       debugPrint('Could not read the offline product list: $e');
+      return null;
+    }
+  }
+
+  // ------------------------------------------------------------------- sales
+  static String _kSales(String uid) => 'sm_offline_sales_v1_$uid';
+
+  /// Only the newest sales are kept, so the saved copy stays small and quick.
+  static const int _maxSavedSales = 3000;
+
+  /// Saves the sales list (newest first) so Home, Sales and Reports open offline.
+  Future<void> saveSales(List<Sale> sales) async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      final newest = sales.length > _maxSavedSales ? sales.sublist(0, _maxSavedSales) : sales;
+      final raw = jsonEncode({
+        'saved_at': DateTime.now().toIso8601String(),
+        'sales': [for (final s in newest) s.toJson()],
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kSales(uid), raw);
+    } catch (e) {
+      debugPrint('Could not save the offline sales list: $e');
+    }
+  }
+
+  /// The last saved sales list for the signed-in user, or null if there is none.
+  Future<SavedSales?> loadSales() async {
+    final uid = _uid;
+    if (uid == null) return null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kSales(uid));
+      if (raw == null) return null;
+      final m = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      return SavedSales(
+        [for (final e in m['sales'] as List) Sale.fromJson(Map<String, dynamic>.from(e as Map))],
+        m['saved_at'] == null ? null : DateTime.tryParse('${m['saved_at']}'),
+      );
+    } catch (e) {
+      debugPrint('Could not read the offline sales list: $e');
       return null;
     }
   }
