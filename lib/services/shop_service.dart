@@ -221,6 +221,29 @@ class ShopService {
     throw last!;
   }
 
+  /// Owner: gives a cashier a NEW code. The old code stops working at once and
+  /// the cashier keeps their sales history. Safe on a weak connection: the same
+  /// request id is used for every try, so a lost reply cannot make two codes.
+  Future<String> resetCashierCode(String code) async {
+    final requestId = const Uuid().v4();
+    Object? last;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final r = await _c.rpc('sm_reset_cashier_code', params: {
+          'p_code': normalizeCode(code),
+          'p_request_id': requestId,
+        }).timeout(const Duration(seconds: 20));
+        return r as String;
+      } on PostgrestException {
+        rethrow;
+      } catch (e) {
+        last = e;
+        await Future<void>.delayed(Duration(seconds: 1 + attempt));
+      }
+    }
+    throw last!;
+  }
+
   /// Owner: removes a cashier who logs in with a code. The code stops working.
   Future<void> removeCashier(String code) =>
       _c.rpc('sm_remove_cashier', params: {'p_code': code});
