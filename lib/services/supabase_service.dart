@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/product.dart';
 import '../models/sale.dart';
 import 'offline_store.dart';
+import 'app_language.dart';
 
 /// What happened when a cart sale was sent to the server.
 enum SaleOutcome {
@@ -79,20 +80,9 @@ class SupabaseService {
     }
   }
 
-  /// Text safe to show to a shop owner. Technical details (socket errors, URLs,
-  /// error numbers) only go to the debug log, never to the screen.
-  static String friendlyError(Object e) {
-    final text = '$e'.toLowerCase();
-    const networkHints = [
-      'socketexception', 'clientexception', 'timeoutexception', 'handshake',
-      'connection', 'network', 'failed host lookup', 'waiting to sign in',
-      'jwt', 'not signed in',
-    ];
-    if (networkHints.any(text.contains)) {
-      return 'No internet connection.\nYour data will load again when you are back online.';
-    }
-    return 'Something went wrong. Please try again.';
-  }
+  /// Text safe to show to a shop owner, in their language. Technical details only
+  /// go to the debug log, never to the screen.
+  static String friendlyError(Object e) => friendly(e);
 
   // ---------------------------------------------------------------- products
   Future<Product?> getProductByBarcode(String barcode) async {
@@ -232,10 +222,10 @@ class SupabaseService {
       return null;
     } on PostgrestException catch (e) {
       debugPrint('Error restocking: ${e.message}');
-      return e.message;
+      return friendly(e);
     } catch (e) {
       debugPrint('Error restocking: $e');
-      return '$e';
+      return friendly(e);
     }
   }
 
@@ -275,10 +265,10 @@ class SupabaseService {
       return null;
     } on PostgrestException catch (e) {
       debugPrint('Error recording cart sale: ${e.message}');
-      return e.message;
+      return friendly(e);
     } catch (e) {
       debugPrint('Error recording cart sale: $e');
-      return '$e';
+      return friendly(e);
     }
   }
 
@@ -315,15 +305,15 @@ class SupabaseService {
       return SaleResult(SaleOutcome.saved, null, orderNo);
     } on PostgrestException catch (e) {
       debugPrint('Error recording cart sale: ${e.message}');
-      if (_isTransient(e)) return SaleResult(SaleOutcome.network, e.message);
-      return SaleResult(SaleOutcome.rejected, e.message);
+      if (_isTransient(e)) return SaleResult(SaleOutcome.network, friendly(e));
+      return SaleResult(SaleOutcome.rejected, friendly(e));
     } on AuthException catch (e) {
       // Not signed in right now: keep the sale and try again later.
-      return SaleResult(SaleOutcome.network, e.message);
+      return SaleResult(SaleOutcome.network, friendly(e));
     } catch (e) {
       // SocketException, TimeoutException, ClientException ...: no usable connection.
       debugPrint('Cart sale not sent: $e');
-      return SaleResult(SaleOutcome.network, '$e');
+      return SaleResult(SaleOutcome.network, friendly(e));
     }
   }
 
