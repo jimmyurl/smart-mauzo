@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/pesapal_service.dart';
+import '../services/app_language.dart';
 
 /// Opens Pesapal's hosted page (M-Pesa, Tigo Pesa, Airtel Money, cards).
 /// Pops with `true` only when Pesapal confirms the payment.
@@ -58,7 +59,7 @@ class _PesapalCheckoutScreenState extends State<PesapalCheckoutScreen> {
         ..loadRequest(Uri.parse(c.payUrl));
       if (mounted) setState(() {});
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = friendly(e));
     }
   }
 
@@ -79,7 +80,7 @@ class _PesapalCheckoutScreenState extends State<PesapalCheckoutScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() { _verifying = false; _error = '$e'; });
+      if (mounted) setState(() { _verifying = false; _error = friendly(e); });
     }
   }
 
@@ -100,7 +101,7 @@ class _PesapalCheckoutScreenState extends State<PesapalCheckoutScreen> {
                   ),
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel'),
+                  child: Text(tr('Cancel')),
                 ),
               ]),
             )

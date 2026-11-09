@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 import '../models/product.dart';
 import '../services/supabase_service.dart';
+import '../services/app_language.dart';
 
 // Product Search Screen
 class ProductSearchScreen extends StatefulWidget {
@@ -32,7 +33,7 @@ class _ProductSearchScreenState extends State<ProductSearchScreen> {
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading products: $e')),
+        SnackBar(content: Text(friendly(e))),
       );
     }
   }
@@ -129,7 +130,7 @@ class _ProductSearchScreenState extends State<ProductSearchScreen> {
           ),
           actions: [
             TextButton(
-              child: const Text('Cancel'),
+              child: Text(tr('Cancel')),
               onPressed: () => Navigator.pop(context),
             ),
             TextButton(
