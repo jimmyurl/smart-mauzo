@@ -11,6 +11,7 @@ import '../services/sync_service.dart';
 import '../utils/money.dart';
 import '../widgets/offline_data_banner.dart';
 import '../widgets/pending_sync_banner.dart';
+import '../services/app_language.dart';
 
 /// End-of-day summary: for one day, how much each person sold, split into cash
 /// and mobile/card, so the owner can check the cash in the drawer.
@@ -87,7 +88,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '$e';
+        _error = friendly(e);
         _loading = false;
       });
     }
@@ -183,13 +184,13 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Daily summary'),
+        title: Text(tr('Daily summary')),
         backgroundColor: _navy,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.calendar_month),
-            tooltip: 'Pick a day',
+            tooltip: tr('Pick a day'),
             onPressed: _pickDay,
           ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
@@ -249,7 +250,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
             children: [
               Text(_error, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              FilledButton(onPressed: _load, child: const Text('Try again')),
+              FilledButton(onPressed: _load, child: Text(tr('Try again'))),
             ],
           ),
         ),
@@ -258,7 +259,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
 
     final daySales = _daySales;
     if (daySales.isEmpty && _credit.isEmpty) {
-      return const Center(child: Text('No sales on this day.'));
+      return Center(child: Text(tr('No sales on this day.')));
     }
 
     final totals = _totals(daySales);
@@ -299,7 +300,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
             ),
           if (showPeople) ...[
             const SizedBox(height: 20),
-            const Text('Per person',
+            Text(tr('Per person'),
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             for (final t in totals) _sellerCard(t),
@@ -319,7 +320,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Total sales', style: TextStyle(color: Colors.white70)),
+          Text(tr('Total sales'), style: TextStyle(color: Colors.white70)),
           const SizedBox(height: 4),
           Text(tzs(total),
               style: const TextStyle(
@@ -330,7 +331,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(child: _methodBox('Cash to collect', cash, Icons.payments)),
+              Expanded(child: _methodBox(tr('Cash to collect'), cash, Icons.payments)),
               const SizedBox(width: 10),
               Expanded(child: _methodBox('Mobile / Card', mobile, Icons.smartphone)),
             ],
