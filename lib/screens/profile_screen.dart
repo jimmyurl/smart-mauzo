@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/shop_service.dart';
 import '../utils/money.dart';
 import '../utils/require_login.dart';
+import '../services/app_language.dart';
+import '../widgets/language_switch.dart';
 
 /// Profile tab.
 ///  - Guest: explains what an account gives you and offers Log in / Sign up.
@@ -49,11 +51,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Sign out?'),
-        content: const Text('You will need to log in again to make sales.'),
+        title: Text(tr('Sign out?')),
+        content: Text(tr('You will need to log in again to make sales.')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sign out')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Cancel'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Sign out'))),
         ],
       ),
     );
@@ -111,10 +113,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: const Icon(Icons.person_outline, size: 38, color: Colors.white),
           ),
           const SizedBox(height: 14),
-          const Text('Guest',
+          Text(tr('Guest'),
               style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          Text('You are not logged in',
+          Text(tr('You are not logged in'),
               style: TextStyle(color: Colors.blue[100], fontSize: 14)),
         ],
       ),
@@ -174,7 +176,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        const Text('Create a free account to:',
+        Text(tr('Create a free account to:'),
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         _benefit(Icons.shopping_cart, 'Make and record sales'),
@@ -191,7 +193,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            child: const Text('Log in or Sign up',
+            child: Text(tr('Log in or Sign up'),
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ),
         ),
@@ -246,12 +248,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   const Icon(Icons.wifi_off, size: 40),
                   const SizedBox(height: 12),
-                  const Text('Could not load your shop.\nCheck your internet connection.',
+                  Text(tr('Could not load your shop.\nCheck your internet connection.'),
                       textAlign: TextAlign.center),
                   const SizedBox(height: 12),
-                  ElevatedButton(onPressed: _reload, child: const Text('Try again')),
+                  ElevatedButton(onPressed: _reload, child: Text(tr('Try again'))),
                   const SizedBox(height: 8),
-                  TextButton(onPressed: _confirmSignOut, child: const Text('Sign out')),
+                  TextButton(onPressed: _confirmSignOut, child: Text(tr('Sign out'))),
                 ],
               ),
             ),
@@ -310,8 +312,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 12),
                   _infoCard(
                     icon: Icons.lock_outline,
-                    title: 'Your sales only',
-                    subtitle: 'You can make sales and see the sales you made.',
+                    title: tr('Your sales only'),
+                    subtitle: tr('You can make sales and see the sales you made.'),
                   ),
                 ],
               ],
@@ -320,15 +322,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _infoCard(
                 icon: Icons.email_outlined,
                 title: _svc.email ?? '',
-                subtitle: 'Logged in with this email',
+                subtitle: tr('Logged in with this email'),
               ),
+              const SizedBox(height: 24),
+              _sectionTitle('Language'),
+              const LanguageSwitch(),
               const SizedBox(height: 24),
               SizedBox(
                 height: 48,
                 child: OutlinedButton.icon(
                   onPressed: _confirmSignOut,
                   icon: const Icon(Icons.logout),
-                  label: const Text('Sign out'),
+                  label: Text(tr('Sign out')),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.red[700],
                     side: BorderSide(color: Colors.red[200]!),
@@ -347,7 +352,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _sectionTitle(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10, left: 4),
-      child: Text(text,
+      child: Text(tr(text),
           style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -423,7 +428,7 @@ class _TeamSectionState extends State<_TeamSection> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('Add a cashier'),
+          title: Text(tr('Add a cashier')),
           content: TextField(
             controller: c,
             autofocus: true,
@@ -436,10 +441,10 @@ class _TeamSectionState extends State<_TeamSection> {
             onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Cancel'))),
             TextButton(
                 onPressed: () => Navigator.pop(ctx, c.text.trim()),
-                child: const Text('Create code')),
+                child: Text(tr('Create code'))),
           ],
         );
       },
@@ -452,7 +457,7 @@ class _TeamSectionState extends State<_TeamSection> {
       _reload();
       await _showCode(name, '${code.substring(0, 4)}-${code.substring(4)}');
     } on PostgrestException catch (e) {
-      _snack(e.message);
+      _snack(friendly(e));
     } catch (_) {
       // The reply may have been lost after the server saved it: show the list again.
       if (mounted) _reload();
@@ -497,11 +502,11 @@ class _TeamSectionState extends State<_TeamSection> {
             onPressed: () {
               Clipboard.setData(ClipboardData(text: pretty));
               Navigator.pop(ctx);
-              _snack('Code copied');
+              _snack(tr('Code copied'));
             },
-            child: const Text('Copy'),
+            child: Text(tr('Copy')),
           ),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Done'))),
         ],
       ),
     );
@@ -516,10 +521,10 @@ class _TeamSectionState extends State<_TeamSection> {
             'Their code stops working and they lose access straight away. '
             'Their past sales stay in your records.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Cancel'))),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Remove', style: TextStyle(color: Colors.red[700])),
+            child: Text(tr('Remove'), style: TextStyle(color: Colors.red[700])),
           ),
         ],
       ),
@@ -535,7 +540,7 @@ class _TeamSectionState extends State<_TeamSection> {
       _reload();
       _snack('${m.label} removed');
     } catch (_) {
-      _snack('Could not remove. Check your internet and try again.');
+      _snack(tr('Could not remove. Check your internet and try again.'));
     }
   }
 
@@ -566,10 +571,10 @@ class _TeamSectionState extends State<_TeamSection> {
               Row(
                 children: [
                   Expanded(
-                    child: Text('Could not load your cashiers.',
+                    child: Text(tr('Could not load your cashiers.'),
                         style: TextStyle(color: Colors.grey[700])),
                   ),
-                  TextButton(onPressed: _reload, child: const Text('Try again')),
+                  TextButton(onPressed: _reload, child: Text(tr('Try again'))),
                 ],
               )
             else if (cashiers.isEmpty)
@@ -619,12 +624,12 @@ class _TeamSectionState extends State<_TeamSection> {
                         IconButton(
                           onPressed: () => _showCode(m.label, m.prettyCode!),
                           icon: Icon(Icons.vpn_key_outlined, color: Colors.blue[900]),
-                          tooltip: 'Show login code',
+                          tooltip: tr('Show login code'),
                         ),
                       IconButton(
                         onPressed: () => _remove(m),
                         icon: Icon(Icons.person_remove_outlined, color: Colors.red[700]),
-                        tooltip: 'Remove cashier',
+                        tooltip: tr('Remove cashier'),
                       ),
                     ],
                   ),
@@ -633,7 +638,7 @@ class _TeamSectionState extends State<_TeamSection> {
             OutlinedButton.icon(
               onPressed: loading ? null : _add,
               icon: const Icon(Icons.person_add_alt_1),
-              label: const Text('Add a cashier'),
+              label: Text(tr('Add a cashier')),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.blue[900],
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
