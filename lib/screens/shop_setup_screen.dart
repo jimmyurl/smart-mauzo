@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/shop_service.dart';
 import '../services/signup_intent.dart';
+import '../services/app_language.dart';
 
 /// Shown once after sign-up: create your shop (you become the owner) or join one with a code (you become a cashier).
 class ShopSetupScreen extends StatefulWidget {
@@ -41,10 +42,8 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
     try {
       await action();
       widget.onDone();
-    } on PostgrestException catch (e) {
-      _msg(e.message);
-    } catch (_) {
-      _msg('Something went wrong. Check your internet connection.');
+    } catch (e) {
+      _msg(friendly(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -101,7 +100,7 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
         title: const Text('Set up your shop'),
         backgroundColor: blue,
         foregroundColor: Colors.white,
-        actions: [TextButton(onPressed: _svc.signOut, child: const Text('Sign out', style: TextStyle(color: Colors.white)))],
+        actions: [TextButton(onPressed: _svc.signOut, child: Text(tr('Sign out'), style: TextStyle(color: Colors.white)))],
       ),
       body: AbsorbPointer(
         absorbing: _busy,
