@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/shop_service.dart';
 import '../utils/phone_auth.dart';
+import '../services/app_language.dart';
+import '../widgets/language_switch.dart';
 
 /// Login / sign-up screen. Opened on top of the app (via requireLogin) when a
 /// guest tries to do something that needs an account.
@@ -48,7 +50,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   String? _validateNewPassword(String? v) {
-    if (v == null || v.isEmpty) return 'Please enter a password';
+    if (v == null || v.isEmpty) return tr('Please enter a password');
     if (v.length < 8) return 'Password must be at least 8 characters long';
     if (!v.contains(RegExp(r'[A-Z]'))) return 'Password must contain a capital letter';
     if (!v.contains(RegExp(r'[0-9]'))) return 'Password must contain a number';
@@ -72,29 +74,24 @@ class _AuthScreenState extends State<AuthScreen> {
         final res = await _svc.signUpWithPhone(phone, _password.text);
         if (res.session == null) {
           // Supabase "Confirm email" is still switched on, so no session was created.
-          _msg('Account created, but sign-in is blocked. Turn OFF "Confirm email" '
-              'in Supabase (Authentication > Providers > Email).');
+          _msg(tr('Account created. Please log in.'));
           if (mounted) setState(() => _isLogin = true);
         } else {
           // Signed up and logged in straight away.
           _close();
         }
       }
-    } on FormatException catch (e) {
-      _msg(e.message);
-    } on PostgrestException catch (e) {
-      _msg(e.message);
     } on AuthException catch (e) {
       final m = e.message.toLowerCase();
       if (m.contains('invalid login')) {
-        _msg('Wrong phone number or password.');
+        _msg(friendly(e));
       } else if (m.contains('already registered') || m.contains('already been registered')) {
-        _msg('This phone number already has an account. Please log in.');
+        _msg(friendly(e));
       } else {
-        _msg(e.message);
+        _msg(friendly(e));
       }
-    } catch (_) {
-      _msg('Something went wrong. Check your internet connection.');
+    } catch (e) {
+      _msg(friendly(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -128,6 +125,8 @@ class _AuthScreenState extends State<AuthScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  const Align(alignment: Alignment.centerRight, child: LanguageSwitch()),
+                  const SizedBox(height: 8),
                   Image.asset(
                     'assets/images/logo.png',
                     height: 96,
@@ -144,17 +143,17 @@ class _AuthScreenState extends State<AuthScreen> {
                   const SizedBox(height: 4),
                   Text(
                       _isCashier
-                          ? 'Cashier login'
-                          : (_isLogin ? 'Log in to your shop' : 'Create your account'),
+                          ? tr('Cashier login')
+                          : (_isLogin ? tr('Log in to your shop') : tr('Create your account')),
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey[600])),
                   const SizedBox(height: 24),
                   SegmentedButton<bool>(
-                    segments: const [
+                    segments: [
                       ButtonSegment(
-                          value: false, icon: Icon(Icons.storefront), label: Text('Shop owner')),
+                          value: false, icon: Icon(Icons.storefront), label: Text(tr('Shop owner'))),
                       ButtonSegment(
-                          value: true, icon: Icon(Icons.badge_outlined), label: Text('Cashier')),
+                          value: true, icon: Icon(Icons.badge_outlined), label: Text(tr('Cashier'))),
                     ],
                     selected: {_isCashier},
                     showSelectedIcon: false,
@@ -176,10 +175,9 @@ class _AuthScreenState extends State<AuthScreen> {
                           fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 3),
                       textAlign: TextAlign.center,
                       decoration: InputDecoration(
-                        labelText: 'Your cashier code',
+                        labelText: tr('Your cashier code'),
                         hintText: 'ABCD-EFGH',
-                        helperText: 'Your shop owner gives you this code.\n'
-                            'No phone number or password needed.',
+                        helperText: tr('Your shop owner gives you this code.\nNo phone number or password needed.'),
                         helperMaxLines: 2,
                         prefixIcon: const Icon(Icons.vpn_key_outlined),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -195,15 +193,15 @@ class _AuthScreenState extends State<AuthScreen> {
                     keyboardType: TextInputType.phone,
                     autofillHints: const [AutofillHints.telephoneNumber],
                     decoration: InputDecoration(
-                      labelText: 'Phone number',
+                      labelText: tr('Phone number'),
                       hintText: '0712 345 678',
                       prefixIcon: const Icon(Icons.phone),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     validator: (v) {
-                      if (v == null || v.trim().isEmpty) return 'Please enter your phone number';
+                      if (v == null || v.trim().isEmpty) return tr('Please enter your phone number');
                       return PhoneAuth.normalize(v) == null
-                          ? 'Please enter a valid phone number'
+                          ? tr('Please enter a valid phone number')
                           : null;
                     },
                   ),
@@ -213,7 +211,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     obscureText: _obscure,
                     autofillHints: const [AutofillHints.password],
                     decoration: InputDecoration(
-                      labelText: 'Password',
+                      labelText: tr('Password'),
                       prefixIcon: const Icon(Icons.lock),
                       suffixIcon: IconButton(
                         icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
@@ -222,7 +220,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     validator: _isLogin
-                        ? (v) => (v == null || v.isEmpty) ? 'Please enter your password' : null
+                        ? (v) => (v == null || v.isEmpty) ? tr('Please enter your password') : null
                         : _validateNewPassword,
                   ),
                   if (!_isLogin) ...[
@@ -231,14 +229,14 @@ class _AuthScreenState extends State<AuthScreen> {
                       controller: _confirm,
                       obscureText: _obscure,
                       decoration: InputDecoration(
-                        labelText: 'Confirm password',
+                        labelText: tr('Confirm password'),
                         prefixIcon: const Icon(Icons.lock_outline),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      validator: (v) => v != _password.text ? 'Passwords do not match' : null,
+                      validator: (v) => v != _password.text ? tr('Passwords do not match') : null,
                     ),
                     const SizedBox(height: 8),
-                    Text('At least 8 characters, 1 capital letter and 1 number.',
+                    Text(tr('At least 8 characters, 1 capital letter and 1 number.'),
                         style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                   ],
                   ],
@@ -257,7 +255,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               width: 22,
                               height: 22,
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : Text(_isCashier || _isLogin ? 'Log in' : 'Sign up',
+                          : Text(_isCashier || _isLogin ? tr('Log in') : tr('Sign up'),
                               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                   ),
@@ -265,8 +263,8 @@ class _AuthScreenState extends State<AuthScreen> {
                     TextButton(
                       onPressed: _busy ? null : () => setState(() => _isLogin = !_isLogin),
                       child: Text(_isLogin
-                          ? "New here? Create an account"
-                          : 'Already have an account? Log in'),
+                          ? tr('New here? Create an account')
+                          : tr('Already have an account? Log in')),
                     ),
                 ],
               ),
