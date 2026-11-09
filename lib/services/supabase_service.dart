@@ -20,6 +20,14 @@ class SaleResult {
   const SaleResult(this.outcome, [this.message, this.orderNo]);
 }
 
+/// The sales list, and whether it is the live one or the copy saved on this phone.
+class SalesLoad {
+  final List<Sale> sales;
+  final bool fromCache;
+  final DateTime? savedAt; // when the saved copy was made (only if fromCache)
+  const SalesLoad(this.sales, this.fromCache, [this.savedAt]);
+}
+
 /// The product list, and whether it is the live one or the copy saved on this phone.
 class ProductsLoad {
   final List<Product> products;
@@ -371,6 +379,20 @@ class SupabaseService {
       ];
     } catch (_) {
       return sales;
+    }
+  }
+
+  /// The live sales list; with no connection (or a very slow one) the copy saved on
+  /// this phone. Every successful load refreshes that copy.
+  Future<SalesLoad> fetchSalesOrCached() async {
+    try {
+      final live = await fetchSales().timeout(const Duration(seconds: 12));
+      OfflineStore().saveSales(live); // not awaited: do not slow the screen down
+      return SalesLoad(live, false);
+    } catch (e) {
+      final saved = await OfflineStore().loadSales();
+      if (saved != null) return SalesLoad(saved.sales, true, saved.savedAt);
+      rethrow;
     }
   }
 
