@@ -20,6 +20,13 @@ class SaleResult {
   const SaleResult(this.outcome, [this.message, this.orderNo]);
 }
 
+/// The product list, and whether it is the live one or the copy saved on this phone.
+class ProductsLoad {
+  final List<Product> products;
+  final bool fromCache;
+  const ProductsLoad(this.products, this.fromCache);
+}
+
 class SupabaseService {
   // ===================================================================
   //  PASTE YOUR PROJECT VALUES HERE (Supabase dashboard -> Project
@@ -88,6 +95,19 @@ class SupabaseService {
     } catch (e) {
       debugPrint('Error fetching product: $e');
       return null;
+    }
+  }
+
+  /// The live product list; with no connection (or a very slow one) the copy saved
+  /// on this phone. Check [ProductsLoad.fromCache] before letting anyone edit.
+  Future<ProductsLoad> getProductsOrCached() async {
+    try {
+      final live = await getProducts().timeout(const Duration(seconds: 8));
+      return ProductsLoad(live, false);
+    } catch (e) {
+      final saved = await OfflineStore().loadProducts();
+      if (saved != null) return ProductsLoad(saved, true);
+      rethrow;
     }
   }
 
