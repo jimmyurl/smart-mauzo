@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
 import '../models/product.dart';
+import '../services/app_language.dart';
 
 class StockScreen extends StatefulWidget {
   const StockScreen({Key? key}) : super(key: key);
@@ -42,7 +43,7 @@ class _StockScreenState extends State<StockScreen> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error fetching products: $e'),
+            content: Text(friendly(e)),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
