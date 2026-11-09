@@ -1278,7 +1278,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     valueColor: profit < 0 ? _lossColor : _profitColor),
               ] else if (OfflineIdentity.isOwner)
                 _detailRow('Buying price', 'Not recorded'),
-              _detailRow('Payment', sale.isCredit ? 'Credit (debt)' : (sale.isMobile ? 'Mobile / Card' : 'Cash')),
+              _detailRow('Payment', sale.isCredit ? 'Credit (debt)' : sale.paymentLabel),
               _detailRow('Date', DateFormat('EEE, d MMM yyyy').format(time)),
               _detailRow('Time', DateFormat('HH:mm').format(time)),
               _detailRow(sale.orderNo == null ? 'Receipt' : 'Order',
