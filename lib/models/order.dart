@@ -20,8 +20,19 @@ class Order {
   String? get soldBy => first.soldBy;
   bool get isMobile => lines.any((l) => l.isMobile);
   bool get isCredit => lines.any((l) => l.isCredit);
-  PayMethod get method =>
-      isCredit ? PayMethod.credit : (isMobile ? PayMethod.mobile : PayMethod.cash);
+  bool get isOwnTill => lines.any((l) => l.isOwnTill);
+  PayMethod get method => isCredit
+      ? PayMethod.credit
+      : (isOwnTill ? PayMethod.lipa : (isMobile ? PayMethod.mobile : PayMethod.cash));
+
+  /// "Cash", "On credit", "Mobile / Card" or "Mobile money (M-Pesa) - Ref ...".
+  String get paymentLabel {
+    if (isCredit) return 'On credit';
+    for (final l in lines) {
+      if (l.isOwnTill) return l.paymentLabel;
+    }
+    return isMobile ? 'Mobile / Card' : 'Cash';
+  }
   bool get isSingle => lines.length == 1;
 
   int get productCount => lines.length;
