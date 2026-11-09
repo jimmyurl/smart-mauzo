@@ -8,6 +8,7 @@ import '../services/supabase_service.dart';
 import '../utils/money.dart';
 import '../widgets/offline_data_banner.dart';
 import '../utils/payment_style.dart';
+import '../services/app_language.dart';
 
 enum _Period { today, week, month, year, custom }
 
@@ -67,7 +68,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = '$e';
+        _errorMessage = friendly(e);
         _isLoading = false;
       });
     }
@@ -256,7 +257,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       child: Scaffold(
         backgroundColor: const Color(0xFFF4F6FA),
         appBar: AppBar(
-          title: const Text('Reports'),
+          title: Text(tr('Reports')),
           backgroundColor: _navy,
           foregroundColor: Colors.white,
           actions: [
@@ -267,13 +268,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             IconButton(icon: const Icon(Icons.refresh), onPressed: _retry),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
             indicatorColor: Colors.white,
             tabs: [
-              Tab(text: 'Overview'),
-              Tab(text: 'Transactions'),
+              Tab(text: tr('Overview')),
+              Tab(text: tr('Transactions')),
             ],
           ),
         ),
@@ -301,7 +302,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               const SizedBox(height: 12),
               Text(_errorMessage, textAlign: TextAlign.center),
               const SizedBox(height: 16),
-              ElevatedButton(onPressed: _retry, child: const Text('Retry')),
+              ElevatedButton(onPressed: _retry, child: Text(tr('Retry'))),
             ],
           ),
         ),
@@ -857,7 +858,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final total = cash + mobile + credit;
 
     return _card(
-      title: 'Payment methods',
+      title: tr('Payment methods'),
       child: Column(
         children: [
           if (total > 0)
