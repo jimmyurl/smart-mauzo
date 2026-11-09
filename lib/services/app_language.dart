@@ -326,5 +326,10 @@ const Map<String, String> _sw = {
   'In stock': 'Stoo',
   'Please enter a password': 'Tafadhali weka nenosiri',
   'Daily': 'Siku',
+  'New code': 'Kodi mpya',
+  'The old code stops working straight away and {name} is signed out of the shop. Their past sales stay with them once they log in with the new code.':
+      'Kodi ya zamani inaacha kufanya kazi mara moja na {name} anatolewa kwenye duka. Mauzo yake ya zamani yatabaki naye akiingia na kodi mpya.',
+  'The connection is weak, so we could not confirm. Tap the key icon to see the current code.':
+      'Intaneti ni dhaifu, hatukuweza kuthibitisha. Bonyeza alama ya ufunguo kuona kodi ya sasa.',
   'Unknown error': 'Hitilafu isiyojulikana',
 };
