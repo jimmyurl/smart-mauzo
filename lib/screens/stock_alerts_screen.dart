@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../models/product.dart';
 import '../services/receipt_service.dart';
 import '../services/supabase_service.dart';
+import '../services/app_language.dart';
 
 /// A product is "low" at this many items or fewer (same level as the rest of the app).
 const int kLowStockLevel = 5;
@@ -73,7 +74,7 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '$e';
+        _error = friendly(e);
         _loading = false;
       });
     }
@@ -127,8 +128,8 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(
-        content: Text('Order copied. Paste it in WhatsApp or SMS.'),
+      ..showSnackBar(SnackBar(
+        content: Text(tr('Order copied. Paste it in WhatsApp or SMS.')),
         backgroundColor: Colors.green,
       ));
   }
@@ -143,16 +144,16 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
           controller: c,
           keyboardType: TextInputType.number,
           autofocus: true,
-          decoration: const InputDecoration(labelText: 'Quantity to order'),
+          decoration: InputDecoration(labelText: tr('Quantity to order')),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(d), child: Text(tr('Cancel'))),
           TextButton(
             onPressed: () {
               final n = int.tryParse(c.text.trim());
               if (n != null && n > 0) Navigator.pop(d, n);
             },
-            child: const Text('OK'),
+            child: Text(tr('OK')),
           ),
         ],
       ),
@@ -169,15 +170,15 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
       initialIndex: widget.initialTab.clamp(0, 1),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Stock alerts'),
+          title: Text(tr('Stock alerts')),
           backgroundColor: _navy,
           foregroundColor: Colors.white,
           actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
-          bottom: const TabBar(
+          bottom: TabBar(
             indicatorColor: Colors.white,
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
-            tabs: [Tab(text: 'Reorder'), Tab(text: 'Expiry')],
+            tabs: [Tab(text: tr('Reorder')), Tab(text: tr('Expiry'))],
           ),
         ),
         body: _loading
@@ -191,7 +192,7 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
                         children: [
                           Text(_error, textAlign: TextAlign.center),
                           const SizedBox(height: 12),
-                          FilledButton(onPressed: _load, child: const Text('Try again')),
+                          FilledButton(onPressed: _load, child: Text(tr('Try again'))),
                         ],
                       ),
                     ),
@@ -204,10 +205,10 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
   Widget _reorderTab() {
     final groups = _groups();
     if (groups.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text('Nothing to reorder. Every product has more than 5 in stock.',
+          child: Text(tr('Nothing to reorder. Every product has more than 5 in stock.'),
               textAlign: TextAlign.center),
         ),
       );
@@ -255,7 +256,7 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
                 TextButton.icon(
                   onPressed: () => _copyOrder(g),
                   icon: const Icon(Icons.copy, size: 18),
-                  label: const Text('Copy order'),
+                  label: Text(tr('Copy order')),
                 ),
               ],
             ),
@@ -275,7 +276,7 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
       contentPadding: EdgeInsets.zero,
       title: Text(p.title, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Text(
-        '${out ? 'Out of stock' : 'In stock: ${p.stockQuantity}'}'
+        '${out ? tr('Out of stock') : '${tr('In stock')}: ${p.stockQuantity}'}'
         '${lastQ == null ? '' : '  •  last bought $lastQ'}',
         style: TextStyle(color: out ? Colors.red : Colors.orange[800]),
       ),
@@ -354,7 +355,7 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
     final when = d < 0
         ? 'Expired ${-d} day${d == -1 ? '' : 's'} ago'
         : d == 0
-            ? 'Expires today'
+            ? tr('Expires today')
             : 'Expires in $d day${d == 1 ? '' : 's'}';
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
