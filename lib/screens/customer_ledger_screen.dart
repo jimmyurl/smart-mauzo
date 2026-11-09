@@ -5,6 +5,7 @@ import '../models/credit.dart';
 import '../models/order.dart';
 import '../services/credit_service.dart';
 import '../utils/money.dart';
+import '../services/app_language.dart';
 
 /// One customer's history: what they took on credit and what they paid, with
 /// a button to record a payment. Owners only.
@@ -74,11 +75,11 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
       final left = await CreditService()
           .recordPayment(_customer.id, result.amount, note: result.note);
       _snack(
-        left <= 0 ? 'Paid in full' : '${tzs(left)} still owed',
+        left <= 0 ? tr('Paid in full') : '${tzs(left)} ${tr('still owed')}',
         ok: true,
       );
     } catch (e) {
-      _snack('Payment not recorded: ${CreditService.message(e)}');
+      _snack('${tr('Payment not recorded')}: ${CreditService.message(e)}');
     }
     _load();
   }
@@ -117,7 +118,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
                             Text(_customer.phone!),
                           ]),
                         const SizedBox(height: 8),
-                        Text(owes ? 'Owes you' : 'No debt',
+                        Text(owes ? tr('Owes you') : tr('No debt'),
                             style: TextStyle(color: Colors.grey[600])),
                         Text(
                           tzs(owes ? _balance : 0),
@@ -133,14 +134,14 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
                           child: FilledButton.icon(
                             onPressed: owes ? _recordPayment : null,
                             icon: const Icon(Icons.payments),
-                            label: const Text('Record payment'),
+                            label: Text(tr('Record payment')),
                           ),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 20),
-                  const Text('History',
+                  Text(tr('History'),
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   if (_error.isNotEmpty)
@@ -149,9 +150,9 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
                       child: Text(_error, style: const TextStyle(color: Colors.red)),
                     )
                   else if (_entries.isEmpty)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(child: Text('Nothing recorded yet.')),
+                      child: Center(child: Text(tr('Nothing recorded yet.'))),
                     )
                   else
                     for (final e in _entries) _entryTile(e),
@@ -164,8 +165,10 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
   Widget _entryTile(CreditEntry e) {
     final when = DateFormat('d MMM yyyy, HH:mm').format(e.createdAt.toLocal());
     final title = e.isSale
-        ? (e.orderNo == null ? 'Goods on credit' : 'Order ${orderLabel(e.orderNo!)} on credit')
-        : 'Payment received';
+        ? (e.orderNo == null
+            ? tr('Goods on credit')
+            : '${tr('Order')} ${orderLabel(e.orderNo!)} ${tr('on credit')}')
+        : tr('Payment received');
     final sub = [when, if (e.note != null) e.note!].join('  •  ');
     return ListTile(
       contentPadding: EdgeInsets.zero,
@@ -218,7 +221,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
   void _submit() {
     final v = double.tryParse(_amount.text.replaceAll(',', '').trim());
     if (v == null || v <= 0) {
-      setState(() => _error = 'Enter the amount received');
+      setState(() => _error = tr('Enter the amount received'));
       return;
     }
     if (v > widget.balance) {
@@ -231,7 +234,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Record payment'),
+      title: Text(tr('Record payment')),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,8 +245,8 @@ class _PaymentDialogState extends State<_PaymentDialog> {
             controller: _amount,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'Amount received',
+            decoration: InputDecoration(
+              labelText: tr('Amount received'),
               border: OutlineInputBorder(),
             ),
           ),
@@ -251,14 +254,14 @@ class _PaymentDialogState extends State<_PaymentDialog> {
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: () => _amount.text = widget.balance.toStringAsFixed(0),
-              child: const Text('Pay full balance'),
+              child: Text(tr('Pay full balance')),
             ),
           ),
           TextField(
             controller: _note,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Note (optional)',
-              hintText: 'e.g. M-Pesa, cash',
+              hintText: tr('e.g. M-Pesa, cash'),
               border: OutlineInputBorder(),
             ),
           ),
@@ -270,8 +273,8 @@ class _PaymentDialogState extends State<_PaymentDialog> {
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: _submit, child: const Text('Save')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('Cancel'))),
+        FilledButton(onPressed: _submit, child: Text(tr('Save'))),
       ],
     );
   }
