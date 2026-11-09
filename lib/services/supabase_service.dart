@@ -141,6 +141,22 @@ class SupabaseService {
     }
   }
 
+  /// Sets (or clears, with null) the expiry date of a product. Owner only.
+  Future<bool> updateProductExpiry(String productId, DateTime? date) async {
+    try {
+      final value = date == null
+          ? null
+          : '${date.year.toString().padLeft(4, '0')}-'
+              '${date.month.toString().padLeft(2, '0')}-'
+              '${date.day.toString().padLeft(2, '0')}';
+      await client.from(_products).update({'expiry_date': value}).eq('id', productId);
+      return true;
+    } catch (e) {
+      debugPrint('Error updating product expiry: $e');
+      return false;
+    }
+  }
+
   Future<bool> updateProductCategory(String productId, String category) async {
     try {
       await client
@@ -199,7 +215,7 @@ class SupabaseService {
   /// Each row includes the supplier name under 'sm_suppliers'.
   Future<List<Map<String, dynamic>>> getStockPurchases({String? productId}) async {
     try {
-      var query = client.from(_purchases).select('*, sm_suppliers(name)');
+      var query = client.from(_purchases).select('*, sm_suppliers(*)');
       if (productId != null) query = query.eq('product_id', productId);
       final rows = await query.order('created_at', ascending: false);
       return List<Map<String, dynamic>>.from(rows as List);
