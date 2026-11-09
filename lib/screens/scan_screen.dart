@@ -6,9 +6,11 @@ import '../models/product.dart';
 import '../models/sale.dart';
 import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
+import '../services/sync_service.dart';
 import '../utils/money.dart';
 import '../utils/payment_style.dart';
 import '../utils/require_login.dart';
+import '../widgets/offline_data_banner.dart';
 import 'credit_screen.dart';
 import 'daily_summary_screen.dart';
 import 'inventory_screen.dart';
@@ -55,6 +57,8 @@ class _ScanScreenState extends State<ScanScreen> {
 
   List<Sale> _sales = [];
   List<Product> _products = [];
+  bool _fromCache = false; // showing the copy saved on this phone
+  DateTime? _savedAt;
   int _tab = 0; // 0 = Recent sales, 1 = Low stock
   bool _hideAmount = false;
   static const int _lowStock = 5;
@@ -75,14 +79,17 @@ class _ScanScreenState extends State<ScanScreen> {
 
   Future<void> _fetchSales() async {
     try {
-      final sales = await _supabaseService.fetchSales();
+      final load = await _supabaseService.fetchSalesOrCached();
       List<Product> products = _products;
       try {
-        products = await _supabaseService.getProducts();
+        final p = await _supabaseService.getProductsOrCached();
+        products = SyncService().applyPending(p.products);
       } catch (_) {}
       if (!mounted) return;
       setState(() {
-        _sales = sales;
+        _sales = load.sales;
+        _fromCache = load.fromCache;
+        _savedAt = load.savedAt;
         _products = products;
         _errorMessage = '';
         _isLoading = false;
@@ -197,6 +204,7 @@ class _ScanScreenState extends State<ScanScreen> {
           child: Column(
             children: [
               _buildAppBar(guest),
+              if (!guest && _fromCache) OfflineDataBanner(savedAt: _savedAt),
               Expanded(
                 child: Container(
                   margin: const EdgeInsets.only(top: 30),
