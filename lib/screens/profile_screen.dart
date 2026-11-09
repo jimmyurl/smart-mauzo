@@ -124,9 +124,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _userHeader() {
-    final email = _svc.email ?? '';
-    final initial = email.isNotEmpty ? email[0].toUpperCase() : '?';
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
       child: FutureBuilder<ShopInfo?>(
@@ -138,16 +135,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
               CircleAvatar(
                 radius: 36,
                 backgroundColor: Colors.white,
-                child: Text(initial,
-                    style: TextStyle(
-                        fontSize: 32, fontWeight: FontWeight.bold, color: Colors.blue[900])),
+                child: Icon(shop != null && !shop.isOwner ? Icons.badge_outlined : Icons.storefront,
+                    size: 34, color: Colors.blue[900]),
               ),
-              const SizedBox(height: 14),
-              Text(email,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
               if (shop != null) ...[
+                const SizedBox(height: 14),
+                Text(shop.name,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -156,7 +152,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    shop.isOwner ? 'Shop owner' : 'Cashier',
+                    shop.isOwner ? tr('Shop owner') : tr('Cashier'),
                     style: const TextStyle(color: Colors.white, fontSize: 12),
                   ),
                 ),
@@ -317,13 +313,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ],
               ],
-              const SizedBox(height: 24),
-              _sectionTitle('Account'),
-              _infoCard(
-                icon: Icons.email_outlined,
-                title: _svc.email ?? '',
-                subtitle: tr('Logged in with this email'),
-              ),
               const SizedBox(height: 24),
               _sectionTitle('Language'),
               const LanguageSwitch(),
