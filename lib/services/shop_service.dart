@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
@@ -29,6 +31,13 @@ class ShopInfo {
         joinCode: j['join_code'] as String?,
         isSuperAdmin: (j['is_super_admin'] as bool?) ?? false,
       );
+}
+
+/// The shop, and whether it is the live answer or the copy saved on this phone.
+class ShopLoad {
+  final ShopInfo? shop;
+  final bool fromCache;
+  const ShopLoad(this.shop, this.fromCache);
 }
 
 /// One person in the owner's shop (from sm_shop_team, owners only).
@@ -131,8 +140,52 @@ class ShopService {
     final shop = ShopInfo.fromJson(Map<String, dynamic>.from(r as Map));
     // Remember the role so owner-only screens also work without internet.
     final uid = _c.auth.currentUser?.id;
-    if (uid != null) OfflineIdentity.setRole(uid, shop.role);
+    if (uid != null) {
+      OfflineIdentity.setRole(uid, shop.role);
+      _saveShopCache(uid, shop);
+    }
     return shop;
+  }
+
+  static String _shopCacheKey(String uid) => 'sm_shop_cache_v1_$uid';
+
+  /// Keeps the shop's name and the person's role on the phone (not the join code).
+  Future<void> _saveShopCache(String uid, ShopInfo s) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _shopCacheKey(uid),
+        jsonEncode({'id': s.id, 'name': s.name, 'role': s.role, 'is_super_admin': s.isSuperAdmin}),
+      );
+    } catch (_) {}
+  }
+
+  /// The shop last saved on this phone, or null if there is none.
+  Future<ShopInfo?> cachedShop() async {
+    final uid = _c.auth.currentUser?.id ?? OfflineIdentity.userId;
+    if (uid == null) return null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_shopCacheKey(uid));
+      if (raw == null) return null;
+      return ShopInfo.fromJson(Map<String, dynamic>.from(jsonDecode(raw) as Map));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Like [myShop], but with no connection it returns the copy saved on this phone.
+  Future<ShopLoad> myShopOrCached() async {
+    try {
+      final live = await myShop().timeout(const Duration(seconds: 12));
+      return ShopLoad(live, false);
+    } on PostgrestException {
+      rethrow; // the server answered and refused: not a connection problem
+    } catch (e) {
+      final saved = await cachedShop();
+      if (saved != null) return ShopLoad(saved, true);
+      rethrow;
+    }
   }
 
   /// Everyone in the owner's shop with their sales totals (owner only).
