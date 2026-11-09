@@ -5,6 +5,7 @@ import '../services/shop_service.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
 import 'barcode_scan_page.dart';
+import '../services/app_language.dart';
 
 /// Register a new item (product) in the shop. Owner only.
 class AddProductScreen extends StatefulWidget {
@@ -108,10 +109,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
       } else if (e.code == '42501') {
         _msg('Only the shop owner can register items.');
       } else {
-        _msg(e.message);
+        _msg(friendly(e));
       }
-    } catch (_) {
-      _msg('Could not save. Check your internet connection.');
+    } catch (e) {
+      _msg(friendly(e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
