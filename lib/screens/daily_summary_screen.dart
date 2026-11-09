@@ -9,6 +9,7 @@ import '../services/shop_service.dart';
 import '../services/supabase_service.dart';
 import '../services/sync_service.dart';
 import '../utils/money.dart';
+import '../widgets/offline_data_banner.dart';
 import '../widgets/pending_sync_banner.dart';
 
 /// End-of-day summary: for one day, how much each person sold, split into cash
@@ -28,12 +29,12 @@ class _SellerTotals {
   int items = 0;
   double cash = 0;
   double mobile = 0;
-  double credit = 0; // sold on credit (counted in cash above, but not collected)
+  double credit = 0; // sold on credit: money still owed, not in the drawer
   double debtPaid = 0; // old debts paid back today
   _SellerTotals(this.userId);
-  double get total => cash + mobile;
-  /// Cash that should be in the drawer.
-  double get cashInHand => cash - credit + debtPaid;
+  double get total => cash + mobile + credit;
+  /// Cash that should be in the drawer: cash sales plus old debts paid back today.
+  double get cashInHand => cash + debtPaid;
 }
 
 class _DailySummaryScreenState extends State<DailySummaryScreen> {
@@ -44,6 +45,8 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
   final SupabaseService _api = SupabaseService();
 
   List<Sale> _sales = [];
+  bool _fromCache = false; // showing the copy saved on this phone
+  DateTime? _savedAt;
   List<CreditEntry> _credit = [];
   List<TeamMember> _team = [];
   DateTime _day = DateTime.now();
@@ -72,10 +75,12 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
   Future<void> _load() async {
     _loadCredit();
     try {
-      final sales = await _api.fetchSales();
+      final load = await _api.fetchSalesOrCached();
       if (!mounted) return;
       setState(() {
-        _sales = sales;
+        _sales = load.sales;
+        _fromCache = load.fromCache;
+        _savedAt = load.savedAt;
         _error = '';
         _loading = false;
       });
@@ -134,7 +139,9 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
     for (final s in daySales) {
       final t = bySeller.putIfAbsent(s.soldBy, () => _SellerTotals(s.soldBy));
       t.items += s.quantity;
-      if (s.isMobile) {
+      if (s.isCredit) {
+        t.credit += s.total;
+      } else if (s.isMobile) {
         t.mobile += s.total;
       } else {
         t.cash += s.total;
@@ -146,11 +153,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
     }
     for (final e in _credit) {
       final t = bySeller.putIfAbsent(e.createdBy, () => _SellerTotals(e.createdBy));
-      if (e.isSale) {
-        t.credit += e.amount;
-      } else {
-        t.debtPaid += e.amount;
-      }
+      if (!e.isSale) t.debtPaid += e.amount; // credit sales come from the sales list
     }
     final list = bySeller.values.toList()..sort((a, b) => b.total.compareTo(a.total));
     return list;
@@ -195,6 +198,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
       body: Column(
         children: [
           const PendingSyncBanner(),
+          if (_fromCache) OfflineDataBanner(savedAt: _savedAt),
           _dayBar(),
           Expanded(child: _body()),
         ],
