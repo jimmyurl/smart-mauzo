@@ -6,6 +6,7 @@ import '../services/credit_service.dart';
 import '../utils/money.dart';
 import '../widgets/customer_picker.dart';
 import 'customer_ledger_screen.dart';
+import '../services/app_language.dart';
 
 /// The credit book (owners): everyone who owes the shop money, biggest debt first.
 class CreditScreen extends StatefulWidget {
@@ -69,7 +70,7 @@ class _CreditScreenState extends State<CreditScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Credit book'),
+        title: Text(tr('Credit book')),
         backgroundColor: _navy,
         foregroundColor: Colors.white,
         actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
@@ -79,7 +80,7 @@ class _CreditScreenState extends State<CreditScreen> {
         backgroundColor: _navy,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.person_add),
-        label: const Text('Customer'),
+        label: Text(tr('Customer')),
       ),
       body: _body(),
     );
@@ -96,7 +97,7 @@ class _CreditScreenState extends State<CreditScreen> {
             children: [
               Text(_error, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              FilledButton(onPressed: _load, child: const Text('Try again')),
+              FilledButton(onPressed: _load, child: Text(tr('Try again'))),
             ],
           ),
         ),
@@ -128,7 +129,7 @@ class _CreditScreenState extends State<CreditScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Total owed to you', style: TextStyle(color: Colors.white70)),
+                Text(tr('Total owed to you'), style: TextStyle(color: Colors.white70)),
                 const SizedBox(height: 4),
                 Text(tzs(totalOwed),
                     style: const TextStyle(
@@ -144,8 +145,8 @@ class _CreditScreenState extends State<CreditScreen> {
           const SizedBox(height: 14),
           TextField(
             onChanged: (v) => setState(() => _query = v),
-            decoration: const InputDecoration(
-              hintText: 'Search customer',
+            decoration: InputDecoration(
+              hintText: tr('Search customer'),
               prefixIcon: Icon(Icons.search),
               border: OutlineInputBorder(),
               isDense: true,
@@ -163,9 +164,9 @@ class _CreditScreenState extends State<CreditScreen> {
               ),
             )
           else if (shown.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(top: 40),
-              child: Center(child: Text('No customer matches your search.')),
+              child: Center(child: Text(tr('No customer matches your search.'))),
             )
           else
             for (final b in shown) _tile(b),
@@ -196,7 +197,7 @@ class _CreditScreenState extends State<CreditScreen> {
       trailing: owes
           ? Text(tzs(b.balance),
               style: const TextStyle(fontWeight: FontWeight.bold, color: _owedColor))
-          : Text('Cleared', style: TextStyle(color: Colors.grey[600])),
+          : Text(tr('Cleared'), style: TextStyle(color: Colors.grey[600])),
     );
   }
 }
