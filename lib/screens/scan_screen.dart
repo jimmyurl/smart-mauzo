@@ -17,6 +17,7 @@ import 'inventory_screen.dart';
 import 'new_sale_screen.dart';
 import 'report_screen.dart';
 import 'sales_screen.dart';
+import '../services/app_language.dart';
 
 class MobileScannerPage extends StatelessWidget {
   const MobileScannerPage({super.key});
@@ -97,7 +98,7 @@ class _ScanScreenState extends State<ScanScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = '$e';
+        _errorMessage = friendly(e);
         _isLoading = false;
       });
     }
@@ -236,7 +237,7 @@ class _ScanScreenState extends State<ScanScreen> {
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         icon: const Icon(Icons.qr_code_scanner),
-        label: const Text('New Sale'),
+        label: Text(tr('New Sale')),
       ),
     );
   }
@@ -282,7 +283,7 @@ class _ScanScreenState extends State<ScanScreen> {
             const SizedBox(height: 12),
             Text(_errorMessage, textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: _retry, child: const Text('Retry')),
+            ElevatedButton(onPressed: _retry, child: Text(tr('Retry'))),
           ],
         ),
       );
@@ -332,7 +333,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
               ),
               Text(
-                guest ? 'Welcome, guest!' : 'Welcome back!',
+                guest ? tr('Welcome, guest!') : tr('Welcome back!'),
                 style: TextStyle(
                   color: Colors.blue[100],
                   fontSize: 16,
@@ -379,7 +380,7 @@ class _ScanScreenState extends State<ScanScreen> {
             const SizedBox(width: 8),
             TextButton(
               onPressed: () => requireLogin(context),
-              child: const Text('Log in'),
+              child: Text(tr('Log in')),
             ),
           ],
         ),
@@ -557,7 +558,7 @@ class _ScanScreenState extends State<ScanScreen> {
             children: [
               Icon(icon, size: 26, color: Colors.blue[900]),
               const SizedBox(height: 6),
-              Text(label,
+              Text(tr(label),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
@@ -616,7 +617,7 @@ class _ScanScreenState extends State<ScanScreen> {
     if (low.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
-        child: Text('All items are well stocked.',
+        child: Text(tr('All items are well stocked.'),
             style: TextStyle(color: Colors.grey[600])),
       );
     }
@@ -630,7 +631,7 @@ class _ScanScreenState extends State<ScanScreen> {
             icon: Icons.inventory_2_outlined,
             iconColor: c,
             title: p.title,
-            subtitle: out ? 'Out of stock' : 'Low stock',
+            subtitle: out ? tr('Out of stock') : tr('Low stock'),
             amount: '${p.stockQuantity} left',
             time: tzs(p.price),
           );
@@ -684,7 +685,7 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
           if (sample) ...[
             const SizedBox(width: 10),
-            Text('Sample', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+            Text(tr('Sample'), style: TextStyle(color: Colors.grey[600], fontSize: 12)),
           ],
         ],
       ),
@@ -828,7 +829,7 @@ class _ScanScreenState extends State<ScanScreen> {
           _transactionTile(
             icon: Icons.payments,
             iconColor: _cashColor,
-            title: 'Sample product',
+            title: tr('Sample product'),
             subtitle: '2 items  •  Cash',
             amount: 'TZS 105,000',
             time: '2 mins ago',
@@ -836,7 +837,7 @@ class _ScanScreenState extends State<ScanScreen> {
           _transactionTile(
             icon: Icons.smartphone,
             iconColor: _mobileColor,
-            title: 'Sample product',
+            title: tr('Sample product'),
             subtitle: '1 item  •  Mobile/Card',
             amount: 'TZS 45,000',
             time: '1 hr ago',
@@ -844,7 +845,7 @@ class _ScanScreenState extends State<ScanScreen> {
           _transactionTile(
             icon: Icons.payments,
             iconColor: _cashColor,
-            title: 'Sample product',
+            title: tr('Sample product'),
             subtitle: '3 items  •  Cash',
             amount: 'TZS 78,000',
             time: '3 hrs ago',
