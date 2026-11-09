@@ -18,6 +18,12 @@ class PendingSale {
   final DateTime soldAt;
   final String? error; // set when the server refused the sale
 
+  /// 'cash' or 'lipa' (mobile money paid to the shop's own number), plus the
+  /// network and transaction reference for 'lipa'. Older saved sales are cash.
+  final String paymentMethod;
+  final String? payProvider;
+  final String? payRef;
+
   const PendingSale({
     required this.receiptId,
     required this.userId,
@@ -25,6 +31,9 @@ class PendingSale {
     required this.total,
     required this.soldAt,
     this.error,
+    this.paymentMethod = 'cash',
+    this.payProvider,
+    this.payRef,
   });
 
   PendingSale withError(String? message) => PendingSale(
@@ -34,6 +43,9 @@ class PendingSale {
         total: total,
         soldAt: soldAt,
         error: message,
+        paymentMethod: paymentMethod,
+        payProvider: payProvider,
+        payRef: payRef,
       );
 
   Map<String, dynamic> toJson() => {
@@ -43,6 +55,9 @@ class PendingSale {
         'total': total,
         'sold_at': soldAt.toIso8601String(),
         'error': error,
+        'payment_method': paymentMethod,
+        'pay_provider': payProvider,
+        'pay_ref': payRef,
       };
 
   factory PendingSale.fromJson(Map<String, dynamic> j) => PendingSale(
@@ -54,6 +69,9 @@ class PendingSale {
         total: (j['total'] as num).toDouble(),
         soldAt: DateTime.parse(j['sold_at'] as String),
         error: j['error'] as String?,
+        paymentMethod: (j['payment_method'] as String?) ?? 'cash',
+        payProvider: j['pay_provider'] as String?,
+        payRef: j['pay_ref'] as String?,
       );
 }
 
