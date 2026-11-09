@@ -6,6 +6,7 @@ import '../models/sale.dart';
 import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
+import '../widgets/offline_data_banner.dart';
 import '../utils/payment_style.dart';
 
 enum _Period { today, week, month, year, custom }
@@ -35,6 +36,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   final SupabaseService _supabaseService = SupabaseService();
 
   List<Sale> _allSales = [];
+  bool _fromCache = false; // showing the copy saved on this phone
+  DateTime? _savedAt;
   bool _isLoading = true;
   String _errorMessage = '';
   _Period _period = _Period.today;
@@ -52,10 +55,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
   /// Fetches once; changing the period only re-filters what is already loaded.
   Future<void> _fetchSales() async {
     try {
-      final sales = await _supabaseService.fetchSales();
+      final load = await _supabaseService.fetchSalesOrCached();
       if (!mounted) return;
       setState(() {
-        _allSales = sales;
+        _allSales = load.sales;
+        _fromCache = load.fromCache;
+        _savedAt = load.savedAt;
         _errorMessage = '';
         _isLoading = false;
       });
@@ -272,7 +277,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ],
           ),
         ),
-        body: _buildBody(),
+        body: Column(
+          children: [
+            if (_fromCache) OfflineDataBanner(savedAt: _savedAt),
+            Expanded(child: _buildBody()),
+          ],
+        ),
       ),
     );
   }
