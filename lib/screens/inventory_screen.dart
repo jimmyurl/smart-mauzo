@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/product.dart';
 import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
+import '../services/sync_service.dart';
 import '../utils/category_utils.dart';
 import '../utils/money.dart';
 import '../widgets/category_chips.dart';
@@ -42,6 +43,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   final Set<String> _expanded = {};
   bool _isLoading = true;
   String? _error;
+  bool _fromCache = false; // showing the list saved on this phone
 
   @override
   void initState() {
@@ -61,9 +63,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
       _error = null;
     });
     try {
-      final products = await _supabaseService.getProducts();
+      final load = await _supabaseService.getProductsOrCached();
+      // Sales still waiting to sync already left the shelf: show the lower stock.
+      final products = SyncService().applyPending(load.products);
       if (!mounted) return;
       setState(() {
+        _fromCache = load.fromCache;
         _products = products;
         _isLoading = false;
         if (_category != null && !products.any((p) => categoryOf(p) == _category)) {
@@ -100,6 +105,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return rows;
   }
 
+  /// Changing products needs the live server, so it is blocked while the list on
+  /// screen is the saved copy. Returns true (after telling the user) when blocked.
+  bool _needsInternet() {
+    if (!_fromCache) return false;
+    _msg('You are offline. Connect to the internet to change products.');
+    return true;
+  }
+
   void _msg(String text, {bool ok = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -130,6 +143,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _openAlerts() async {
+    if (_needsInternet()) return;
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const StockAlertsScreen()),
@@ -147,6 +161,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _editExpiry(Product product) async {
+    if (_needsInternet()) return;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final first = today.subtract(const Duration(days: 365));
@@ -172,6 +187,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _clearExpiry(Product product) async {
+    if (_needsInternet()) return;
     final ok = await _supabaseService.updateProductExpiry(product.id, null);
     if (!mounted) return;
     if (ok) {
@@ -183,6 +199,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _openRestock(Product product) async {
+    if (_needsInternet()) return;
     final suppliers = await _supabaseService.getSupplierNames();
     if (!mounted) return;
     final saved = await Navigator.push<bool>(
@@ -198,6 +215,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _openAddProduct() async {
+    if (_needsInternet()) return;
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const AddProductScreen()),
@@ -253,6 +271,24 @@ class _InventoryScreenState extends State<InventoryScreen> {
       ),
       body: Column(
         children: [
+          if (_fromCache)
+            Container(
+              width: double.infinity,
+              color: Colors.orange[100],
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.wifi_off, size: 18, color: Colors.orange[900]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'No internet. Showing the list saved on this phone. You can look and search, but not change anything. Tap refresh when you are back online.',
+                      style: TextStyle(fontSize: 12, color: Colors.orange[900]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: TextField(
@@ -415,6 +451,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _showUpdateStockDialog(Product product) {
+    if (_needsInternet()) return Future<void>.value();
     final controller = TextEditingController(text: product.stockQuantity.toString());
     return showDialog(
       context: context,
@@ -448,6 +485,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _showChangeCategoryDialog(Product product) {
+    if (_needsInternet()) return Future<void>.value();
     final current = categoryOf(product);
     final controller = TextEditingController(text: current == kUncategorized ? '' : current);
     final options = groupByCategory(_products).keys.where((k) => k != kUncategorized).toList();
