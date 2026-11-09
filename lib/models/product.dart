@@ -9,6 +9,7 @@ class Product {
   int stockQuantity;
   final DateTime createdAt;
   final String? category; // NEW
+  final DateTime? expiryDate; // optional, date only
 
   Product({
     required this.id,
@@ -21,7 +22,17 @@ class Product {
     required this.stockQuantity,
     required this.createdAt,
     this.category, // NEW
+    this.expiryDate,
   });
+
+  /// Whole days from today until the expiry date (negative = already expired).
+  /// Null when no expiry date is set.
+  int? get daysToExpiry {
+    final e = expiryDate;
+    if (e == null) return null;
+    final now = DateTime.now();
+    return DateTime(e.year, e.month, e.day).difference(DateTime(now.year, now.month, now.day)).inDays;
+  }
 
   factory Product.fromJson(Map<String, dynamic> json) {
     return Product(
@@ -35,6 +46,9 @@ class Product {
       stockQuantity: json['stock_quantity'] ?? 0,
       createdAt: DateTime.parse(json['created_at']),
       category: json['category'], // NEW
+      expiryDate: json['expiry_date'] == null
+          ? null
+          : DateTime.tryParse('${json['expiry_date']}'),
     );
   }
 
@@ -50,6 +64,11 @@ class Product {
       'stock_quantity': stockQuantity,
       'created_at': createdAt.toIso8601String(),
       'category': category, // NEW
+      'expiry_date': expiryDate == null
+          ? null
+          : '${expiryDate!.year.toString().padLeft(4, '0')}-'
+              '${expiryDate!.month.toString().padLeft(2, '0')}-'
+              '${expiryDate!.day.toString().padLeft(2, '0')}',
     };
   }
 }
