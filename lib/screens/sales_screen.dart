@@ -12,6 +12,7 @@ import '../widgets/receipt_sheet.dart';
 import '../widgets/offline_data_banner.dart';
 import '../widgets/pending_sync_banner.dart';
 import 'new_sale_screen.dart';
+import '../services/app_language.dart';
 
 enum _Period { today, week, month, all, custom }
 
@@ -99,7 +100,7 @@ class _SalesScreenState extends State<SalesScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = '$e';
+        _errorMessage = friendly(e);
         _isLoading = false;
       });
     }
@@ -207,7 +208,7 @@ class _SalesScreenState extends State<SalesScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ChoiceChip(
-              label: const Text('Everyone'),
+              label: Text(tr('Everyone')),
               selected: _sellerFilter == null,
               onSelected: (_) => setState(() => _sellerFilter = null),
             ),
@@ -238,7 +239,7 @@ class _SalesScreenState extends State<SalesScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.calendar_month),
-            tooltip: 'Search by date',
+            tooltip: tr('Search by date'),
             onPressed: _pickDates,
           ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchSales),
@@ -257,7 +258,7 @@ class _SalesScreenState extends State<SalesScreen> {
         backgroundColor: _navy,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_shopping_cart),
-        label: const Text('New sale'),
+        label: Text(tr('New sale')),
       ),
     );
   }
@@ -275,7 +276,7 @@ class _SalesScreenState extends State<SalesScreen> {
               const SizedBox(height: 12),
               Text(_errorMessage, textAlign: TextAlign.center),
               const SizedBox(height: 16),
-              ElevatedButton(onPressed: _fetchSales, child: const Text('Retry')),
+              ElevatedButton(onPressed: _fetchSales, child: Text(tr('Retry'))),
             ],
           ),
         ),
@@ -449,7 +450,7 @@ class _SalesScreenState extends State<SalesScreen> {
     final total = cash + mobile + credit;
 
     return _card(
-      title: 'Payment methods',
+      title: tr('Payment methods'),
       child: Column(
         children: [
           if (total > 0)
@@ -536,7 +537,7 @@ class _SalesScreenState extends State<SalesScreen> {
     final maxRevenue = shown.first.revenue;
 
     return _card(
-      title: 'Best sellers',
+      title: tr('Best sellers'),
       child: Column(
         children: shown.map((p) {
           return Padding(
@@ -713,7 +714,7 @@ class _SalesScreenState extends State<SalesScreen> {
             child: TextButton.icon(
               onPressed: () => _openReceipt(order),
               icon: const Icon(Icons.receipt_long, size: 18),
-              label: const Text('Receipt'),
+              label: Text(tr('Receipt')),
             ),
           ),
         ],
