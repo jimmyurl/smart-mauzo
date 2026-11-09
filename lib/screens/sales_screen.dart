@@ -9,6 +9,7 @@ import '../services/offline_store.dart';
 import '../services/shop_service.dart';
 import '../services/sync_service.dart';
 import '../widgets/receipt_sheet.dart';
+import '../widgets/offline_data_banner.dart';
 import '../widgets/pending_sync_banner.dart';
 import 'new_sale_screen.dart';
 
@@ -30,6 +31,8 @@ class _SalesScreenState extends State<SalesScreen> {
 
   final SupabaseService _supabaseService = SupabaseService();
   List<Sale> _sales = [];
+  bool _fromCache = false; // showing the copy saved on this phone
+  DateTime? _savedAt;
   bool _isLoading = true;
   String _errorMessage = '';
   _Period _period = _Period.today;
@@ -85,10 +88,12 @@ class _SalesScreenState extends State<SalesScreen> {
       _errorMessage = '';
     });
     try {
-      final sales = await _supabaseService.fetchSales();
+      final load = await _supabaseService.fetchSalesOrCached();
       if (!mounted) return;
       setState(() {
-        _sales = sales;
+        _sales = load.sales;
+        _fromCache = load.fromCache;
+        _savedAt = load.savedAt;
         _isLoading = false;
       });
     } catch (e) {
@@ -242,6 +247,7 @@ class _SalesScreenState extends State<SalesScreen> {
       body: Column(
         children: [
           const PendingSyncBanner(),
+          if (_fromCache) OfflineDataBanner(savedAt: _savedAt),
           if (OfflineIdentity.isOwner && _team.length > 1) _sellerBar(),
           Expanded(child: _buildBody()),
         ],
