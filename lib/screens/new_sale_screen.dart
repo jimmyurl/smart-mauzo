@@ -10,10 +10,12 @@ import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
 import '../services/sync_service.dart';
 import '../widgets/customer_picker.dart';
+import '../widgets/mobile_money_sheet.dart';
 import '../widgets/pending_sync_banner.dart';
 import '../widgets/receipt_sheet.dart';
 import '../utils/category_utils.dart';
 import '../utils/money.dart';
+import '../utils/payment_style.dart';
 import '../widgets/category_chips.dart';
 import 'pesapal_checkout_screen.dart';
 import '../services/app_language.dart';
@@ -103,7 +105,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
 
   /// The cart as an Order, so a receipt can be made after the cart is cleared.
   Order _cartAsOrder(String receiptId, DateTime soldAt, int? orderNo,
-      {String paymentMethod = 'cash'}) {
+      {String paymentMethod = 'cash', String? payProvider, String? payRef}) {
     final uid = SyncService().userId;
     var i = 0;
     return Order([
@@ -118,6 +120,8 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
           soldBy: uid,
           orderNo: orderNo,
           paymentMethod: paymentMethod,
+          payProvider: payProvider,
+          payRef: payRef,
         ),
     ]);
   }
@@ -332,7 +336,19 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
 
   /// Cash: the whole cart is saved in one database transaction (all lines or none).
   /// With no connection the sale is kept on the phone and sent automatically later.
-  Future<void> _cashSale() async {
+  Future<void> _cashSale() => _directSale();
+
+  /// Mobile money paid straight to the shop's own number (no gateway). Works like
+  /// a cash sale, including offline, but remembers the network and reference.
+  Future<void> _lipaSale() async {
+    if (!_validateCart()) return;
+    final info = await askMobileMoney(context, total: _total);
+    if (info == null || !mounted) return; // cancelled
+    await _directSale(method: 'lipa', provider: info.provider, ref: info.reference);
+  }
+
+  /// Saves the cart as a sale that is paid at once ([method] 'cash' or 'lipa').
+  Future<void> _directSale({String method = 'cash', String? provider, String? ref}) async {
     if (!_validateCart()) return;
     setState(() => _saving = true);
 
@@ -347,6 +363,9 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
       items: items,
       receiptId: receiptId,
       soldAt: soldAt,
+      paymentMethod: method,
+      payProvider: provider,
+      payRef: ref,
     );
     if (!mounted) return;
 
@@ -359,6 +378,9 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
             items: items,
             total: total,
             soldAt: soldAt,
+            paymentMethod: method,
+            payProvider: provider,
+            payRef: ref,
           ));
       if (!mounted) return;
       if (!saved) {
@@ -367,7 +389,8 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
         _showMessage(tr('Could not save the sale. Check your connection and try again.'));
         return;
       }
-      final offlineReceipt = _cartAsOrder(receiptId, soldAt, null);
+      final offlineReceipt = _cartAsOrder(receiptId, soldAt, null,
+          paymentMethod: method, payProvider: provider, payRef: ref);
       setState(() {
         _saving = false;
         // Show the lower stock straight away (it is applied again on every reload).
@@ -384,10 +407,11 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     setState(() => _saving = false);
     if (result.outcome == SaleOutcome.saved) {
       final n = result.orderNo;
-      final receipt = _cartAsOrder(receiptId, soldAt, n);
+      final receipt = _cartAsOrder(receiptId, soldAt, n,
+          paymentMethod: method, payProvider: provider, payRef: ref);
       setState(_cart.clear);
-      _showMessage(
-          n == null ? 'Cash sale recorded' : 'Order ${orderLabel(n)} recorded',
+      final what = method == 'lipa' ? tr('Mobile money sale recorded') : 'Cash sale recorded';
+      _showMessage(n == null ? what : 'Order ${orderLabel(n)} recorded',
           success: true, receipt: receipt);
       SyncService().sync(); // send anything that was waiting
     } else {
@@ -802,14 +826,12 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                       child: SizedBox(
                         height: 50,
                         child: ElevatedButton.icon(
-                          onPressed: (_cart.isEmpty || !SyncService().online)
-                              ? null
-                              : _mobileSale,
-                          icon: const Icon(Icons.smartphone),
-                          label: Text(tr('Mobile / Card'),
+                          onPressed: _cart.isEmpty ? null : _lipaSale,
+                          icon: const Icon(Icons.account_balance_wallet_outlined),
+                          label: Text(tr('Mobile money'),
                               style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue[900],
+                            backgroundColor: kLipaColor,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8)),
@@ -822,22 +844,40 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
               if (!_saving)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 44,
-                    child: OutlinedButton.icon(
-                      onPressed: (_cart.isEmpty || !SyncService().online)
-                          ? null
-                          : _creditSale,
-                      icon: const Icon(Icons.menu_book_outlined),
-                      label: const Text('Sell on credit (debt)'),
-                    ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 44,
+                          child: OutlinedButton.icon(
+                            onPressed: (_cart.isEmpty || !SyncService().online)
+                                ? null
+                                : _mobileSale,
+                            icon: const Icon(Icons.credit_card),
+                            label: Text(tr('Card / Online')),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SizedBox(
+                          height: 44,
+                          child: OutlinedButton.icon(
+                            onPressed: (_cart.isEmpty || !SyncService().online)
+                                ? null
+                                : _creditSale,
+                            icon: const Icon(Icons.menu_book_outlined),
+                            label: Text(tr('Credit (debt)')),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               if (!_saving && !SyncService().online)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text('Mobile / Card and Credit need internet',
+                  child: Text(tr('Card / Online and Credit need internet'),
                       style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                 ),
             ],
