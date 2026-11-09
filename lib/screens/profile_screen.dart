@@ -459,7 +459,7 @@ class _TeamSectionState extends State<_TeamSection> {
     return showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text("$name's login code"),
+        title: Text(AppLanguage.isSwahili ? 'Kodi ya kuingia ya $name' : "$name's login code"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -480,9 +480,12 @@ class _TeamSectionState extends State<_TeamSection> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Give this code to $name only. On the login page they choose "Cashier" '
-              'and type the code. No phone number or password is needed.',
-              style: TextStyle(fontSize: 13),
+              AppLanguage.isSwahili
+                  ? 'Mpe $name tu kodi hii. Kwenye ukurasa wa kuingia achague "Muuzaji" '
+                      'kisha aandike kodi. Hahitaji namba ya simu wala nenosiri.'
+                  : 'Give this code to $name only. On the login page they choose "Cashier" '
+                      'and type the code. No phone number or password is needed.',
+              style: const TextStyle(fontSize: 13),
             ),
           ],
         ),
@@ -495,10 +498,48 @@ class _TeamSectionState extends State<_TeamSection> {
             },
             child: Text(tr('Copy')),
           ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _resetCode(name, pretty);
+            },
+            child: Text(tr('New code')),
+          ),
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Done'))),
         ],
       ),
     );
+  }
+
+  /// Gives the cashier a new code (use it when a code was shared or a phone lost).
+  Future<void> _resetCode(String name, String pretty) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppLanguage.isSwahili ? 'Kodi mpya kwa $name?' : 'Give $name a new code?'),
+        content: Text(tr(
+                'The old code stops working straight away and {name} is signed out of the shop. '
+                'Their past sales stay with them once they log in with the new code.')
+            .replaceAll('{name}', name)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Cancel'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('New code'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final fresh = await _svc.resetCashierCode(pretty);
+      if (!mounted) return;
+      _reload();
+      await _showCode(name, '${fresh.substring(0, 4)}-${fresh.substring(4)}');
+    } on PostgrestException catch (e) {
+      _snack(friendly(e));
+    } catch (_) {
+      // The reply may have been lost after the server saved it: show the list again.
+      if (mounted) _reload();
+      _snack(tr('The connection is weak, so we could not confirm. Tap the key icon to see the current code.'));
+    }
   }
 
   Future<void> _remove(TeamMember m) async {
