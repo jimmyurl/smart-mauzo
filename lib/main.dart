@@ -9,6 +9,7 @@ import 'services/supabase_service.dart';
 import 'services/sync_service.dart';
 import 'utils/login_required_view.dart';
 import 'utils/require_login.dart';
+import 'services/app_language.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +19,7 @@ void main() async {
     return;
   }
   await SupabaseService().initialize();
+  await AppLanguage.load(); // saved English / Kiswahili choice
   await SyncService().init(); // offline sale queue + automatic sync
   runApp(const MyApp());
 }
@@ -27,17 +29,22 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Smart Mauzo',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0D47A1)),
-        useMaterial3: true,
-        // Change this one line to switch the font, e.g. GoogleFonts.interTextTheme()
-        textTheme: GoogleFonts.poppinsTextTheme(),
+    // Rebuilds the whole app when the language is changed.
+    return ValueListenableBuilder<String>(
+      valueListenable: AppLanguage.notifier,
+      builder: (context, lang, _) => MaterialApp(
+        key: ValueKey(lang),
+        debugShowCheckedModeBanner: false,
+        title: 'Smart Mauzo',
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0D47A1)),
+          useMaterial3: true,
+          // Change this one line to switch the font, e.g. GoogleFonts.interTextTheme()
+          textTheme: GoogleFonts.poppinsTextTheme(),
+        ),
+        // Login -> shop setup -> the app
+        home: const AuthGate(home: MainScreen()),
       ),
-      // Login -> shop setup -> the app
-      home: const AuthGate(home: MainScreen()),
     );
   }
 }
@@ -81,10 +88,10 @@ class _MainScreenState extends State<MainScreen> {
         unselectedItemColor: Colors.grey[600],
         onTap: (index) => setState(() => _currentIndex = index),
         items: [
-          BottomNavigationBarItem(icon: _icon('assets/icons/scan.png'), label: 'Home'),
-          BottomNavigationBarItem(icon: _icon('assets/icons/products.png'), label: 'Products'),
-          BottomNavigationBarItem(icon: _icon('assets/icons/sales.png'), label: 'Sales'),
-          BottomNavigationBarItem(icon: _icon('assets/icons/profile.png'), label: 'Profile'),
+          BottomNavigationBarItem(icon: _icon('assets/icons/scan.png'), label: tr('Home')),
+          BottomNavigationBarItem(icon: _icon('assets/icons/products.png'), label: tr('Products')),
+          BottomNavigationBarItem(icon: _icon('assets/icons/sales.png'), label: tr('Sales')),
+          BottomNavigationBarItem(icon: _icon('assets/icons/profile.png'), label: tr('Profile')),
         ],
       ),
     );
