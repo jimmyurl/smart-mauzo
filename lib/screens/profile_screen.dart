@@ -19,16 +19,24 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _svc = ShopService();
   Future<ShopInfo?>? _shop;
+  bool _fromCache = false; // showing details saved on this phone
 
   @override
   void initState() {
     super.initState();
     // Guests have no shop, so only load it when logged in.
-    if (isLoggedIn) _shop = _svc.myShop();
+    if (isLoggedIn) _shop = _loadShop();
+  }
+
+  /// The shop from the server, or (with no connection) the copy saved on the phone.
+  Future<ShopInfo?> _loadShop() async {
+    final r = await _svc.myShopOrCached();
+    if (mounted && r.fromCache != _fromCache) setState(() => _fromCache = r.fromCache);
+    return r.shop;
   }
 
   Future<void> _reload() async {
-    final future = _svc.myShop();
+    final future = _loadShop();
     setState(() => _shop = future);
     try {
       await future;
@@ -258,6 +266,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(20),
             children: [
+              if (_fromCache)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.wifi_off, size: 18, color: Colors.orange[900]),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'No internet. Showing the details saved on this phone. Pull down to refresh.',
+                          style: TextStyle(fontSize: 12, color: Colors.orange[900]),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               if (shop != null) ...[
                 _sectionTitle('My shop'),
                 _infoCard(
@@ -268,7 +297,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 if (shop.isOwner) ...[
                   const SizedBox(height: 24),
                   _sectionTitle('My cashiers'),
-                  const _TeamSection(),
+                  if (_fromCache)
+                    _infoCard(
+                      icon: Icons.wifi_off,
+                      title: 'Cashier list needs internet',
+                      subtitle: 'Connect to see and manage your cashiers.',
+                    )
+                  else
+                    const _TeamSection(),
                 ],
                 if (!shop.isOwner) ...[
                   const SizedBox(height: 12),
