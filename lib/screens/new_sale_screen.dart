@@ -16,6 +16,7 @@ import '../utils/category_utils.dart';
 import '../utils/money.dart';
 import '../widgets/category_chips.dart';
 import 'pesapal_checkout_screen.dart';
+import '../services/app_language.dart';
 
 /// One line in the cart.
 class _CartLine {
@@ -203,13 +204,13 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
           controller: controller,
           autofocus: true,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Quantity'),
+          decoration: InputDecoration(labelText: tr('Quantity')),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(d), child: Text(tr('Cancel'))),
           TextButton(
             onPressed: () => Navigator.pop(d, int.tryParse(controller.text)),
-            child: const Text('OK'),
+            child: Text(tr('OK')),
           ),
         ],
       ),
@@ -228,10 +229,10 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
-        title: const Text('Clear all items?'),
+        title: Text(tr('Clear all items?')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('No')),
-          TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('Yes')),
+          TextButton(onPressed: () => Navigator.pop(d, false), child: Text(tr('No'))),
+          TextButton(onPressed: () => Navigator.pop(d, true), child: Text(tr('Yes'))),
         ],
       ),
     );
@@ -317,7 +318,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
 
   bool _validateCart() {
     if (_cart.isEmpty) {
-      _showMessage('Add at least one item first');
+      _showMessage(tr('Add at least one item first'));
       return false;
     }
     for (final line in _cart.values) {
@@ -363,7 +364,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
       if (!saved) {
         // Could not even save it on the phone: keep the cart so nothing is lost.
         setState(() => _saving = false);
-        _showMessage('Could not save the sale. Check your connection and try again.');
+        _showMessage(tr('Could not save the sale. Check your connection and try again.'));
         return;
       }
       final offlineReceipt = _cartAsOrder(receiptId, soldAt, null);
@@ -375,7 +376,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
         }
         _cart.clear();
       });
-      _showMessage('No connection: sale saved on this phone and will sync automatically',
+      _showMessage(tr('No connection: sale saved on this phone and will sync automatically'),
           success: true, receipt: offlineReceipt);
       return;
     }
@@ -413,7 +414,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
         title: const Text('Sell on credit'),
         content: Text("${tzs(total)} will be added to ${customer.name}'s debt."),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(d, false), child: Text(tr('Cancel'))),
           FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Confirm')),
         ],
       ),
@@ -461,7 +462,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
       _creditKey = null; // the server said no: nothing was recorded
       if (!mounted) return;
       setState(() => _saving = false);
-      _showMessage('Sale not recorded: ${e.message}');
+      _showMessage('${tr('Sale not recorded')}: ${friendly(e)}');
     } catch (_) {
       // Unknown result (timeout, lost signal). Keep the same receipt id so that
       // pressing the button again cannot record the sale twice.
@@ -481,18 +482,18 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.phone,
-          decoration: const InputDecoration(
-            labelText: 'Customer phone (optional)',
+          decoration: InputDecoration(
+            labelText: tr('Customer phone (optional)'),
             hintText: '07XXXXXXXX',
             prefixIcon: Icon(Icons.phone_android),
             border: OutlineInputBorder(),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(d), child: Text(tr('Cancel'))),
           TextButton(
             onPressed: () => Navigator.pop(d, controller.text.trim()),
-            child: const Text('Continue'),
+            child: Text(tr('Continue')),
           ),
         ],
       ),
@@ -503,7 +504,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
   /// The server records the sale only after Pesapal confirms payment, so do NOT call recordSale here.
   Future<void> _mobileSale() async {
     if (!SyncService().online) {
-      _showMessage('Mobile / Card payments need an internet connection');
+      _showMessage(tr('Mobile / Card payments need an internet connection'));
       return;
     }
     if (!_validateCart()) return;
@@ -529,10 +530,10 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     if (!mounted) return;
     if (paid == true) {
       setState(_cart.clear);
-      _showMessage('Payment received, sale recorded', success: true);
+      _showMessage(tr('Payment received, sale recorded'), success: true);
       await _fetchProducts();
     } else {
-      _showMessage('Payment was not completed');
+      _showMessage(tr('Payment was not completed'));
     }
   }
 
@@ -543,14 +544,14 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('New Sale'),
+        title: Text(tr('New Sale')),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [
           if (_cart.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete_sweep_outlined),
-              tooltip: 'Clear all',
+              tooltip: tr('Clear all'),
               onPressed: _saving ? null : _clearCart,
             ),
         ],
@@ -603,7 +604,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                   focusNode: _searchFocus,
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
-                    hintText: 'Type name or barcode...',
+                    hintText: tr('Type name or barcode...'),
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _searchController.text.isEmpty
                         ? null
@@ -617,13 +618,13 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
               ),
               const SizedBox(width: 8),
               IconButton.filled(
-                tooltip: 'Scan barcode / QR',
+                tooltip: tr('Scan barcode / QR'),
                 style: IconButton.styleFrom(backgroundColor: Colors.blue[900]),
                 icon: const Icon(Icons.qr_code_scanner),
                 onPressed: _scan,
               ),
               IconButton.filledTonal(
-                tooltip: 'Browse by category',
+                tooltip: tr('Browse by category'),
                 icon: const Icon(Icons.category_outlined),
                 onPressed: _openBrowse,
               ),
@@ -632,7 +633,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: FilterChip(
-              label: const Text('Keep scanning'),
+              label: Text(tr('Keep scanning')),
               visualDensity: VisualDensity.compact,
               selected: _keepScanning,
               onSelected: (v) => setState(() => _keepScanning = v),
@@ -785,7 +786,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                         child: ElevatedButton.icon(
                           onPressed: _cart.isEmpty ? null : _cashSale,
                           icon: const Icon(Icons.payments),
-                          label: const Text('Cash',
+                          label: Text(tr('Cash'),
                               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green,
@@ -805,7 +806,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                               ? null
                               : _mobileSale,
                           icon: const Icon(Icons.smartphone),
-                          label: const Text('Mobile / Card',
+                          label: Text(tr('Mobile / Card'),
                               style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blue[900],
@@ -893,11 +894,11 @@ class _BrowseSheetState extends State<_BrowseSheet> {
           padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
           child: Row(
             children: [
-              const Expanded(
-                child: Text('Browse items',
+              Expanded(
+                child: Text(tr('Browse items'),
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
+              TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('Done'))),
             ],
           ),
         ),
@@ -905,7 +906,7 @@ class _BrowseSheetState extends State<_BrowseSheet> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: TextField(
             decoration: InputDecoration(
-              hintText: 'Filter by name or barcode',
+              hintText: tr('Filter by name or barcode'),
               prefixIcon: const Icon(Icons.search),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               isDense: true,
@@ -922,7 +923,7 @@ class _BrowseSheetState extends State<_BrowseSheet> {
         ),
         Expanded(
           child: rows.isEmpty
-              ? Center(child: Text('No items', style: TextStyle(color: Colors.grey[600])))
+              ? Center(child: Text(tr('No items'), style: TextStyle(color: Colors.grey[600])))
               : ListView.builder(
                   itemCount: rows.length,
                   itemBuilder: (context, i) {
