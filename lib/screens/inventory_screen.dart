@@ -11,6 +11,7 @@ import '../widgets/category_field.dart';
 import 'add_product_screen.dart';
 import 'restock_screen.dart';
 import 'stock_alerts_screen.dart';
+import '../services/app_language.dart';
 
 /// Products: grouped by category, searchable, update stock, register new items.
 class InventoryScreen extends StatefulWidget {
@@ -79,7 +80,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _error = '$e';
+        _error = friendly(e);
       });
     }
   }
@@ -248,7 +249,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final counts = {for (final e in groups.entries) e.key: e.value.length};
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Products'),
+        title: Text(tr('Products')),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [
@@ -342,7 +343,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
             children: [
               Text(_error!, textAlign: TextAlign.center),
               const SizedBox(height: 16),
-              ElevatedButton(onPressed: _loadInventory, child: const Text('Retry')),
+              ElevatedButton(onPressed: _loadInventory, child: Text(tr('Retry'))),
             ],
           ),
         ),
@@ -464,7 +465,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
         ),
         actions: [
           TextButton(
-            child: const Text('Cancel'),
+            child: Text(tr('Cancel')),
             onPressed: () => Navigator.pop(dialogContext),
           ),
           TextButton(
@@ -496,11 +497,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
         content: CategoryField(controller: controller, options: options),
         actions: [
           TextButton(
-            child: const Text('Cancel'),
+            child: Text(tr('Cancel')),
             onPressed: () => Navigator.pop(dialogContext),
           ),
           TextButton(
-            child: const Text('Save'),
+            child: Text(tr('Save')),
             onPressed: () {
               final value = controller.text.trim();
               if (value.isEmpty) {
