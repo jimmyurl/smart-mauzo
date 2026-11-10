@@ -5,6 +5,7 @@ import '../models/credit.dart';
 import '../models/order.dart';
 import '../services/credit_service.dart';
 import '../utils/money.dart';
+import '../widgets/reminder_sheet.dart';
 import '../services/app_language.dart';
 
 /// One customer's history: what they took on credit and what they paid, with
@@ -137,6 +138,21 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
                             label: Text(tr('Record payment')),
                           ),
                         ),
+                        if (owes) ...[
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () => showReminderSheet(
+                                context,
+                                customer: _customer,
+                                balance: _balance,
+                              ),
+                              icon: const Icon(Icons.chat_outlined),
+                              label: Text(tr('Send reminder')),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
