@@ -12,6 +12,14 @@ class CreditRejected implements Exception {
   String toString() => message;
 }
 
+/// Result of a credit sale. [depositRecorded] is false when the customer paid a
+/// deposit but the server could not record it (the sale itself is saved).
+class CreditSaleResult {
+  final int? orderNo;
+  final bool depositRecorded;
+  const CreditSaleResult(this.orderNo, this.depositRecorded);
+}
+
 /// Talks to the credit-book tables and functions (see credit_book.sql).
 class CreditService {
   static final CreditService _instance = CreditService._();
@@ -86,23 +94,38 @@ class CreditService {
     ];
   }
 
-  /// Sells a cart on credit. Returns the order number. Sending the same
-  /// [receiptId] twice records it only once. Throws [CreditRejected] when the
-  /// server refuses; any other error means the result is unknown.
-  Future<int?> creditSale({
+  /// Sells a cart on credit. Sending the same [receiptId] twice records it only
+  /// once. [paidNow] is a deposit the customer pays at the counter ([paidMethod]
+  /// 'cash' or 'mobile'); it is recorded as a payment in the same step. Throws
+  /// [CreditRejected] when the server refuses; any other error means the result
+  /// is unknown.
+  Future<CreditSaleResult> creditSale({
     required List<Map<String, dynamic>> items,
     required String customerId,
     required String receiptId,
     required DateTime soldAt,
+    double paidNow = 0,
+    String paidMethod = 'cash',
   }) async {
     try {
-      final r = await _c.rpc('sm_record_credit_sale', params: {
+      final params = <String, dynamic>{
         'p_items': items,
         'p_customer_id': customerId,
         'p_receipt_id': receiptId,
         'p_sold_at': soldAt.toUtc().toIso8601String(),
+      };
+      if (paidNow <= 0) {
+        // Unchanged path: no deposit.
+        final r = await _c.rpc('sm_record_credit_sale', params: params).timeout(_timeout);
+        return CreditSaleResult((r as num?)?.toInt(), false);
+      }
+      final r = await _c.rpc('sm_record_credit_sale_v2', params: {
+        ...params,
+        'p_paid_now': paidNow,
+        'p_paid_method': paidMethod,
       }).timeout(_timeout);
-      return (r as num?)?.toInt();
+      final m = Map<String, dynamic>.from(r as Map);
+      return CreditSaleResult((m['order_no'] as num?)?.toInt(), m['deposit_recorded'] == true);
     } on PostgrestException catch (e) {
       throw CreditRejected(e.message);
     }
