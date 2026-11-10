@@ -5,6 +5,7 @@ import '../models/credit.dart';
 import '../services/credit_service.dart';
 import '../utils/money.dart';
 import '../widgets/customer_picker.dart';
+import '../widgets/reminder_sheet.dart';
 import 'customer_ledger_screen.dart';
 import '../services/app_language.dart';
 
@@ -195,8 +196,19 @@ class _CreditScreenState extends State<CreditScreen> {
       title: Text(b.customer.name, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: details.isEmpty ? null : Text(details),
       trailing: owes
-          ? Text(tzs(b.balance),
-              style: const TextStyle(fontWeight: FontWeight.bold, color: _owedColor))
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(tzs(b.balance),
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: _owedColor)),
+                IconButton(
+                  tooltip: tr('Send reminder'),
+                  icon: const Icon(Icons.chat_outlined, color: Color(0xFF25D366)),
+                  onPressed: () =>
+                      showReminderSheet(context, customer: b.customer, balance: b.balance),
+                ),
+              ],
+            )
           : Text(tr('Cleared'), style: TextStyle(color: Colors.grey[600])),
     );
   }
