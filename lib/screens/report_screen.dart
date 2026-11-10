@@ -1,14 +1,17 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../models/expense.dart';
 import '../models/order.dart';
 import '../models/sale.dart';
+import '../services/expense_service.dart';
 import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
 import '../utils/money.dart';
 import '../widgets/offline_data_banner.dart';
 import '../utils/payment_style.dart';
 import '../services/app_language.dart';
+import 'expenses_screen.dart';
 
 enum _Period { today, week, month, year, custom }
 
@@ -36,6 +39,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   final SupabaseService _supabaseService = SupabaseService();
 
+  /// Expenses of the shown period (kept per period; cleared when sales are reloaded).
+  final Map<String, Future<List<Expense>>> _expFutures = {};
+
   List<Sale> _allSales = [];
   bool _fromCache = false; // showing the copy saved on this phone
   DateTime? _savedAt;
@@ -58,6 +64,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     try {
       final load = await _supabaseService.fetchSalesOrCached();
       if (!mounted) return;
+      _expFutures.clear();
       setState(() {
         _allSales = load.sales;
         _fromCache = load.fromCache;
@@ -416,6 +423,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             const SizedBox(height: 12),
             _profitCard(sales),
             const SizedBox(height: 12),
+            _netProfitCard(sales),
             _chartCard(sales),
             const SizedBox(height: 12),
             _paymentSplit(sales),
@@ -622,6 +630,81 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ],
         ],
       ),
+    );
+  }
+
+  // ----------------------------------------------------------- net profit card
+  /// Profit minus what the shop spent in the same period (rent, salaries...). Owner
+  /// only and needs internet; stays hidden while loading or if expenses cannot load.
+  Widget _netProfitCard(List<Sale> sales) {
+    if (!OfflineIdentity.isOwner || _fromCache) return const SizedBox.shrink();
+    final key = '${_start.toIso8601String()}|${_end.toIso8601String()}';
+    final future = _expFutures.putIfAbsent(key, () => ExpenseService().list(_start, _end));
+    return FutureBuilder<List<Expense>>(
+      future: future,
+      builder: (context, snap) {
+        if (!snap.hasData) return const SizedBox.shrink();
+        final spent = snap.data!.fold<double>(0, (s, e) => s + e.amount);
+        final fin = _fin(sales);
+
+        Widget content;
+        if (spent == 0) {
+          content = Row(
+            children: [
+              Icon(Icons.add_circle_outline, color: Colors.blue[900]),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  tr('No expenses recorded for this period. Tap to add rent, salaries, transport and other costs.'),
+                  style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                ),
+              ),
+            ],
+          );
+        } else if (fin.known == 0) {
+          // No buying prices, so profit is unknown: show only what was spent.
+          content = _miniStat(tr('Expenses'), tzs(spent), const Color(0xFFEF6C00));
+        } else {
+          final net = fin.profit - spent;
+          final color = net < 0 ? _lossColor : _profitColor;
+          content = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(tzs(net),
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color)),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(child: _miniStat(tr('Gross profit'), tzs(fin.profit), _profitColor)),
+                  Expanded(
+                      child: _miniStat(tr('Expenses'), tzs(spent), const Color(0xFFEF6C00))),
+                ],
+              ),
+            ],
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () async {
+              await Navigator.push(
+                  context, MaterialPageRoute(builder: (_) => const ExpensesScreen()));
+              if (mounted) setState(_expFutures.clear);
+            },
+            child: _card(
+              title: tr('Net profit'),
+              trailing: Icon(Icons.chevron_right, color: Colors.grey[500]),
+              child: content,
+            ),
+          ),
+        );
+      },
     );
   }
 
