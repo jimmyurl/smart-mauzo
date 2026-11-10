@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/shop_setup_screen.dart';
 import 'services/offline_store.dart';
 import 'services/shop_service.dart';
+import 'widgets/recovery_nudge.dart';
 
 enum _ShopState { has, none }
 
@@ -130,7 +131,7 @@ class _AuthGateState extends State<AuthGate> {
           );
         }
         if (snap.data == _ShopState.none) return ShopSetupScreen(onDone: _reloadShop);
-        return widget.home;
+        return RecoveryNudge(child: widget.home);
       },
     );
   }
