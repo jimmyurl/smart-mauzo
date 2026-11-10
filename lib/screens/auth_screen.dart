@@ -4,6 +4,7 @@ import '../services/shop_service.dart';
 import '../utils/phone_auth.dart';
 import '../services/app_language.dart';
 import '../widgets/language_switch.dart';
+import 'forgot_password_screen.dart';
 
 /// Login / sign-up screen. Opened on top of the app (via requireLogin) when a
 /// guest tries to do something that needs an account.
@@ -41,6 +42,10 @@ class _AuthScreenState extends State<AuthScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
+
+  Future<void> _forgot() => Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => ForgotPasswordScreen(initialPhone: _phone.text),
+      ));
 
   /// Close this screen (if it was opened as a prompt on top of the app).
   void _close() {
@@ -223,6 +228,14 @@ class _AuthScreenState extends State<AuthScreen> {
                         ? (v) => (v == null || v.isEmpty) ? tr('Please enter your password') : null
                         : _validateNewPassword,
                   ),
+                  if (_isLogin)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _busy ? null : _forgot,
+                        child: Text(tr('Forgot password?')),
+                      ),
+                    ),
                   if (!_isLogin) ...[
                     const SizedBox(height: 16),
                     TextFormField(
