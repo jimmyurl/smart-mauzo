@@ -10,6 +10,7 @@ import '../services/offline_store.dart';
 import '../services/supabase_service.dart';
 import '../services/sync_service.dart';
 import '../widgets/customer_picker.dart';
+import '../widgets/credit_terms_dialog.dart';
 import '../widgets/mobile_money_sheet.dart';
 import '../widgets/pending_sync_banner.dart';
 import '../widgets/receipt_sheet.dart';
@@ -105,7 +106,10 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
 
   /// The cart as an Order, so a receipt can be made after the cart is cleared.
   Order _cartAsOrder(String receiptId, DateTime soldAt, int? orderNo,
-      {String paymentMethod = 'cash', String? payProvider, String? payRef}) {
+      {String paymentMethod = 'cash',
+      String? payProvider,
+      String? payRef,
+      double paidNow = 0}) {
     final uid = SyncService().userId;
     var i = 0;
     return Order([
@@ -123,7 +127,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
           payProvider: payProvider,
           payRef: payRef,
         ),
-    ]);
+    ], paidNow: paidNow);
   }
 
   Future<void> _fetchProducts() async {
@@ -432,18 +436,9 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     if (customer == null || !mounted) return;
 
     final total = _total;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (d) => AlertDialog(
-        title: const Text('Sell on credit'),
-        content: Text("${tzs(total)} will be added to ${customer.name}'s debt."),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: Text(tr('Cancel'))),
-          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Confirm')),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
+    final terms =
+        await askCreditTerms(context, customerName: customer.name, total: total);
+    if (terms == null || !mounted) return;
 
     final items = <Map<String, dynamic>>[
       for (final l in _cart.values) {'product_id': l.product.id, 'quantity': l.quantity}
@@ -460,26 +455,32 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
 
     setState(() => _saving = true);
     try {
-      final orderNo = await CreditService().creditSale(
+      final res = await CreditService().creditSale(
         items: items,
         customerId: customer.id,
         receiptId: receiptId,
         soldAt: soldAt,
+        paidNow: terms.paidNow,
+        paidMethod: terms.method,
       );
       if (!mounted) return;
-      final receipt = _cartAsOrder(receiptId, soldAt, orderNo, paymentMethod: 'credit');
+      final orderNo = res.orderNo;
+      final deposit = res.depositRecorded ? terms.paidNow : 0.0;
+      final receipt = _cartAsOrder(receiptId, soldAt, orderNo,
+          paymentMethod: 'credit', paidNow: deposit);
       _creditKey = null;
       setState(() {
         _saving = false;
         _cart.clear();
       });
-      _showMessage(
-        orderNo == null
-            ? 'Credit sale recorded for ${customer.name}'
-            : 'Order ${orderLabel(orderNo)} on credit for ${customer.name}',
-        success: true,
-        receipt: receipt,
-      );
+      var msg = orderNo == null
+          ? 'Credit sale recorded for ${customer.name}'
+          : 'Order ${orderLabel(orderNo)} on credit for ${customer.name}';
+      if (deposit > 0) msg += ' - ${tr('Paid now')} ${tzs(deposit)}';
+      if (terms.paidNow > 0 && !res.depositRecorded) {
+        msg += '. ${tr('The deposit was not recorded. Add it from the customer page (Record payment).')}';
+      }
+      _showMessage(msg, success: true, receipt: receipt);
       SyncService().sync();
       await _fetchProducts(); // stock changed
     } on CreditRejected catch (e) {
