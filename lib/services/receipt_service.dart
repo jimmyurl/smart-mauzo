@@ -55,7 +55,9 @@ class ReceiptService {
     b
       ..writeln(line)
       ..writeln('*TOTAL: ${tzs(order.total)}*')
-      ..writeln('Paid: ${_payment(order)}')
+      ..writeln(order.isCredit && order.paidNow > 0
+          ? 'Paid now: ${tzs(order.paidNow)}\nBalance owed: ${tzs(order.total - order.paidNow)}'
+          : 'Paid: ${_payment(order)}')
       ..writeln()
       ..write('Thank you for shopping with us!');
     return b.toString();
@@ -119,7 +121,11 @@ class ReceiptService {
               ],
             ),
             pw.SizedBox(height: 2),
-            center('Paid: ${_payment(order)}', size: 9),
+            center(
+                order.isCredit && order.paidNow > 0
+                    ? 'Paid now: ${tzs(order.paidNow)}\nBalance owed: ${tzs(order.total - order.paidNow)}'
+                    : 'Paid: ${_payment(order)}',
+                size: 9),
             pw.SizedBox(height: 10),
             center('Thank you for shopping with us!', size: 9),
           ],
