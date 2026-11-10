@@ -8,7 +8,13 @@ String orderLabel(int orderNo) => '#${orderNo.toString().padLeft(4, '0')}';
 class Order {
   /// The lines of this order, in the order they were received.
   final List<Sale> lines;
-  Order(this.lines);
+
+  /// Credit sales only: money the customer paid at the counter (a deposit).
+  /// Not stored on the sale rows; it is known right after the sale so the
+  /// receipt can show "Paid now / Balance owed".
+  final double paidNow;
+
+  Order(this.lines, {this.paidNow = 0});
 
   Sale get first => lines.first;
   int? get orderNo => first.orderNo;
