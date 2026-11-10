@@ -6,7 +6,9 @@ import '../services/shop_service.dart';
 import '../utils/money.dart';
 import '../utils/require_login.dart';
 import '../services/app_language.dart';
+import '../services/recovery_service.dart';
 import '../widgets/language_switch.dart';
+import '../widgets/security_section.dart';
 
 /// Profile tab.
 ///  - Guest: explains what an account gives you and offers Log in / Sign up.
@@ -312,6 +314,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     subtitle: tr('You can make sales and see the sales you made.'),
                   ),
                 ],
+              ],
+              if (!_fromCache && RecoveryService.isPhoneAccount) ...[
+                const SizedBox(height: 24),
+                _sectionTitle('Account security'),
+                const SecuritySection(),
               ],
               const SizedBox(height: 24),
               _sectionTitle('Language'),
