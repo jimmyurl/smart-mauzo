@@ -13,6 +13,7 @@ import '../utils/require_login.dart';
 import '../widgets/offline_data_banner.dart';
 import 'credit_screen.dart';
 import 'daily_summary_screen.dart';
+import 'expenses_screen.dart';
 import 'inventory_screen.dart';
 import 'new_sale_screen.dart';
 import 'report_screen.dart';
@@ -515,6 +516,29 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   Widget _buildQuickActions() {
+    final actions = <Widget>[
+      _action(Icons.shopping_cart_outlined, 'New sale', _openNewSale),
+      _action(Icons.inventory_2_outlined, 'Products',
+          () => _openGuarded(const InventoryScreen())),
+      _action(Icons.calendar_month_outlined, 'Sales',
+          () => _openGuarded(const SalesScreen())),
+      _action(Icons.assessment_outlined, 'Reports',
+          () => _openGuarded(const ReportsScreen())),
+      _action(Icons.today_outlined, 'Daily',
+          () => _openGuarded(const DailySummaryScreen())),
+      if (OfflineIdentity.isOwner)
+        _action(Icons.menu_book_outlined, 'Credit',
+            () => _openGuarded(const CreditScreen())),
+      if (OfflineIdentity.isOwner)
+        _action(Icons.payments_outlined, 'Expenses',
+            () => _openGuarded(const ExpensesScreen())),
+    ];
+    // Seven buttons are too narrow for one row on a phone: owners get two rows.
+    final perRow = actions.length > 6 ? 4 : actions.length;
+    final rows = <List<Widget>>[
+      for (var i = 0; i < actions.length; i += perRow)
+        actions.sublist(i, i + perRow > actions.length ? actions.length : i + perRow),
+    ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Container(
@@ -523,21 +547,21 @@ class _ScanScreenState extends State<ScanScreen> {
           border: Border.all(color: Colors.grey.shade300),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        child: Column(
           children: [
-            _action(Icons.shopping_cart_outlined, 'New sale', _openNewSale),
-            _action(Icons.inventory_2_outlined, 'Products',
-                () => _openGuarded(const InventoryScreen())),
-            _action(Icons.calendar_month_outlined, 'Sales',
-                () => _openGuarded(const SalesScreen())),
-            _action(Icons.assessment_outlined, 'Reports',
-                () => _openGuarded(const ReportsScreen())),
-            _action(Icons.today_outlined, 'Daily',
-                () => _openGuarded(const DailySummaryScreen())),
-            if (OfflineIdentity.isOwner)
-              _action(Icons.menu_book_outlined, 'Credit',
-                  () => _openGuarded(const CreditScreen())),
+            for (var r = 0; r < rows.length; r++)
+              Padding(
+                padding: EdgeInsets.only(top: r == 0 ? 0 : 14),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    ...rows[r],
+                    // keep the buttons of a shorter last row the same width as the rest
+                    for (var i = rows[r].length; i < perRow; i++)
+                      const Expanded(child: SizedBox()),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
