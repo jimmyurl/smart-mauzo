@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/shop_setup_screen.dart';
 import 'services/offline_store.dart';
 import 'services/shop_service.dart';
+import 'services/shop_settings.dart';
 import 'widgets/recovery_nudge.dart';
 
 enum _ShopState { has, none }
@@ -56,6 +57,7 @@ class _AuthGateState extends State<AuthGate> {
           if (state.event == AuthChangeEvent.signedOut) {
             _loadedFor = null;
             _shop = null;
+            ShopSettings.reset();
           } else if (uid != null && uid != _loadedFor) {
             // A different person signed in (not an hourly token refresh, and not a
             // remembered login being restored): check their shop.
@@ -76,9 +78,13 @@ class _AuthGateState extends State<AuthGate> {
       if (_svc.session == null) throw StateError('no live session yet');
       final shop = await _svc.myShop().timeout(const Duration(seconds: 6));
       if (uid != null) await OfflineIdentity.setHasShop(uid, shop != null);
+      if (shop != null) ShopSettings.load(); // business type, in the background
       return shop == null ? _ShopState.none : _ShopState.has;
     } catch (e) {
-      if (uid != null && OfflineIdentity.hasShop(uid)) return _ShopState.has;
+      if (uid != null && OfflineIdentity.hasShop(uid)) {
+        ShopSettings.load(); // the copy saved on this phone
+        return _ShopState.has;
+      }
       rethrow;
     }
   }
