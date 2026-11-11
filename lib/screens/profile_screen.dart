@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/offline_store.dart';
 import '../services/shop_service.dart';
 import '../utils/money.dart';
 import '../utils/require_login.dart';
 import '../services/app_language.dart';
 import '../services/recovery_service.dart';
+import '../widgets/business_type_sheet.dart';
 import '../widgets/language_switch.dart';
 import '../widgets/security_section.dart';
 
@@ -314,6 +316,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     subtitle: tr('You can make sales and see the sales you made.'),
                   ),
                 ],
+              ],
+              if (OfflineIdentity.isOwner) ...[
+                const SizedBox(height: 24),
+                _sectionTitle('Business'),
+                const BusinessTypeTile(),
               ],
               if (!_fromCache && RecoveryService.isPhoneAccount) ...[
                 const SizedBox(height: 24),
