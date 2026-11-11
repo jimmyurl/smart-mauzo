@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/product.dart';
 import '../services/offline_store.dart';
+import '../services/shop_settings.dart';
 import '../services/supabase_service.dart';
 import '../services/sync_service.dart';
 import '../utils/category_utils.dart';
@@ -489,7 +490,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
     if (_needsInternet()) return Future<void>.value();
     final current = categoryOf(product);
     final controller = TextEditingController(text: current == kUncategorized ? '' : current);
-    final options = groupByCategory(_products).keys.where((k) => k != kUncategorized).toList();
+    final existing =
+        groupByCategory(_products).keys.where((k) => k != kUncategorized).toList();
+    // The shop's own categories first, then suggestions for its business type.
+    final options = [
+      ...existing,
+      ...ShopSettings.starterCategories()
+          .where((c) => !existing.any((e) => e.toLowerCase() == c.toLowerCase())),
+    ];
     return showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
