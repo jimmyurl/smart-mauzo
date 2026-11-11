@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../models/business_type.dart';
 import '../models/order.dart';
 import '../models/product.dart';
 import '../models/sale.dart';
 import '../services/offline_store.dart';
+import '../services/shop_settings.dart';
 import '../services/supabase_service.dart';
 import '../services/sync_service.dart';
 import '../utils/money.dart';
@@ -18,6 +20,7 @@ import 'inventory_screen.dart';
 import 'new_sale_screen.dart';
 import 'report_screen.dart';
 import 'sales_screen.dart';
+import 'stock_alerts_screen.dart';
 import '../services/app_language.dart';
 
 class MobileScannerPage extends StatelessWidget {
@@ -515,7 +518,12 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
-  Widget _buildQuickActions() {
+  Widget _buildQuickActions() => ValueListenableBuilder<BusinessType?>(
+        valueListenable: ShopSettings.type,
+        builder: (context, type, _) => _quickActionsFor(type),
+      );
+
+  Widget _quickActionsFor(BusinessType? type) {
     final actions = <Widget>[
       _action(Icons.shopping_cart_outlined, 'New sale', _openNewSale),
       _action(Icons.inventory_2_outlined, 'Products',
@@ -526,6 +534,10 @@ class _ScanScreenState extends State<ScanScreen> {
           () => _openGuarded(const ReportsScreen())),
       _action(Icons.today_outlined, 'Daily',
           () => _openGuarded(const DailySummaryScreen())),
+      // Medicines and food go off: one tap to what is about to expire.
+      if (type != null && type.tracksExpiry)
+        _action(Icons.event_busy_outlined, 'Expiry',
+            () => _openGuarded(const StockAlertsScreen(initialTab: 1))),
       if (OfflineIdentity.isOwner)
         _action(Icons.menu_book_outlined, 'Credit',
             () => _openGuarded(const CreditScreen())),
