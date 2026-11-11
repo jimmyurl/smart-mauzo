@@ -3,6 +3,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/shop_service.dart';
 import '../services/signup_intent.dart';
 import '../services/app_language.dart';
+import '../models/business_type.dart';
+import '../services/shop_settings.dart';
+import '../widgets/business_type_sheet.dart';
 
 /// Shown once after sign-up: create your shop (you become the owner) or join one with a code (you become a cashier).
 class ShopSetupScreen extends StatefulWidget {
@@ -16,6 +19,7 @@ class ShopSetupScreen extends StatefulWidget {
 class _ShopSetupScreenState extends State<ShopSetupScreen> {
   final _svc = ShopService();
   final _name = TextEditingController();
+  BusinessType? _type;
   bool _busy = false;
   bool _ready = false; // the cashier flag has been read from the phone
 
@@ -125,11 +129,33 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
                       decoration: const InputDecoration(
                           labelText: 'Shop name', border: OutlineInputBorder()),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
+                    Text(tr('What kind of business do you run?'),
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    BusinessTypePicker(
+                      selected: _type,
+                      onChanged: (t) => setState(() => _type = t),
+                    ),
+                    const SizedBox(height: 4),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: () => _run(() => _svc.createShop(_name.text)),
+                        onPressed: () {
+                          final type = _type;
+                          if (type == null) {
+                            _msg(tr('Please choose your business type'));
+                            return;
+                          }
+                          _run(() async {
+                            await _svc.createShop(_name.text);
+                            try {
+                              await ShopSettings.setBusinessType(type);
+                            } catch (_) {
+                              // The shop exists; the app asks for the type again later.
+                            }
+                          });
+                        },
                         style: ElevatedButton.styleFrom(
                             backgroundColor: blue, foregroundColor: Colors.white),
                         child: const Text('Create shop'),
