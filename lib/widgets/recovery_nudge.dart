@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/app_language.dart';
 import '../services/recovery_service.dart';
+import 'business_type_sheet.dart';
 import 'recovery_code_dialog.dart';
 
 /// Wraps the logged-in app. Once per app start, if this phone-number account has
@@ -25,6 +26,8 @@ class _RecoveryNudgeState extends State<RecoveryNudge> {
 
   Future<void> _maybeAsk() async {
     if (_askedThisRun || !RecoveryService.isPhoneAccount) return;
+    await maybeAskBusinessType(context); // one question at a time: business type first
+    if (!mounted) return;
     if (await RecoveryService.nudgeSnoozed()) return;
     bool has;
     try {
