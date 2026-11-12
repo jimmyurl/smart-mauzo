@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'barcode_scan_page.dart';
 import '../models/product.dart';
+import '../models/product_unit.dart';
 import '../models/order.dart';
 import '../models/sale.dart';
 import '../services/credit_service.dart';
@@ -21,12 +22,16 @@ import '../widgets/category_chips.dart';
 import 'pesapal_checkout_screen.dart';
 import '../services/app_language.dart';
 
-/// One line in the cart.
+/// One line in the cart: a product in one unit (null = the base unit).
 class _CartLine {
   Product product;
-  int quantity;
-  _CartLine(this.product, this.quantity);
-  double get subtotal => product.price * quantity;
+  ProductUnit? unit;
+  int quantity; // how many of [unit]
+  _CartLine(this.product, this.unit, this.quantity);
+  int get factor => unit?.factor ?? 1;
+
+  /// Quantity in base units, which is how stock is counted.
+  int get baseQty => quantity * factor;
 }
 
 class NewSaleScreen extends StatefulWidget {
@@ -43,7 +48,8 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
 
   List<Product> _products = [];
   List<Product> _results = [];
-  final Map<String, _CartLine> _cart = {}; // keyed by product id
+  final Map<String, _CartLine> _cart = {}; // keyed by product id + unit id
+  String _level = 'retail'; // price level for the whole sale
   bool _loading = true;
   bool _saving = false;
 
@@ -56,10 +62,131 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
   bool _usingCache = false; // product list comes from the phone, not the server
   bool _fetching = false;
 
-  String _key(Product p) => p.id.toString();
+  String _lineKey(Product p, ProductUnit? u) => '${p.id}|${u?.id ?? ''}';
 
-  double get _total => _cart.values.fold(0.0, (sum, l) => sum + l.subtotal);
+  /// Price of one [l.unit] at the chosen level (same rules as the server).
+  double _unitPrice(_CartLine l) => l.product.priceFor(_level, unit: l.unit);
+  double _lineTotal(_CartLine l) => ((_unitPrice(l) * l.quantity) * 100).round() / 100;
+
+  double get _total => _cart.values.fold(0.0, (sum, l) => sum + _lineTotal(l));
   int get _itemCount => _cart.values.fold(0, (sum, l) => sum + l.quantity);
+
+  /// Base units of [p] in the cart, over all its lines.
+  int _baseInCart(Product p) => _cart.values
+      .where((l) => l.product.id == p.id)
+      .fold(0, (sum, l) => sum + l.baseQty);
+
+  /// Does any product have a wholesale / special price? Then the level choice shows.
+  bool get _hasLevels => _products.any((p) =>
+      p.priceWholesale != null ||
+      p.priceSpecial != null ||
+      p.units.any((u) => u.priceWholesale != null || u.priceSpecial != null));
+
+  /// Card / online payments only know retail prices of single items.
+  bool get _retailOnly => _level == 'retail' && _cart.values.every((l) => l.unit == null);
+
+  /// The cart as the server wants it. Quantities are in the unit sold.
+  List<Map<String, dynamic>> _cartItems() => [
+        for (final l in _cart.values)
+          {
+            'product_id': l.product.id,
+            'quantity': l.quantity,
+            if (l.unit != null) 'unit_id': l.unit!.id,
+            if (_level != 'retail') 'level': _level,
+          }
+      ];
+
+  String _baseUnitName(Product p) => p.baseUnit ?? tr('piece');
+  String _unitLabel(_CartLine l) => l.unit?.name ?? _baseUnitName(l.product);
+  String _priceNote(_CartLine l) => l.product.units.isEmpty
+      ? '${tzs(_unitPrice(l))} each'
+      : '${tzs(_unitPrice(l))} / ${_unitLabel(l)}';
+
+  /// Switches a cart line to another unit of the same product (keeps the quantity).
+  void _setUnit(_CartLine line, String unitId) {
+    final p = line.product;
+    ProductUnit? target;
+    if (unitId.isNotEmpty) {
+      for (final u in p.units) {
+        if (u.id == unitId) target = u;
+      }
+    }
+    if (target?.id == line.unit?.id) return;
+    final existing = _cart[_lineKey(p, target)];
+    final merged = line.quantity + (existing?.quantity ?? 0);
+    final newBase = _baseInCart(p) -
+        line.baseQty -
+        (existing?.baseQty ?? 0) +
+        merged * (target?.factor ?? 1);
+    if (newBase > p.stockQuantity) {
+      _showMessage('Only ${p.stockQuantity} of ${p.title} in stock');
+      return;
+    }
+    setState(() {
+      _cart.remove(_lineKey(p, line.unit));
+      if (existing != null) {
+        existing.quantity = merged;
+      } else {
+        _cart[_lineKey(p, target)] = _CartLine(p, target, line.quantity);
+      }
+    });
+  }
+
+  Widget _unitMenu(_CartLine l) => Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: PopupMenuButton<String>(
+          enabled: !_saving,
+          onSelected: (v) => _setUnit(l, v),
+          itemBuilder: (_) => [
+            PopupMenuItem<String>(value: '', child: Text(_baseUnitName(l.product))),
+            for (final u in l.product.units)
+              PopupMenuItem<String>(
+                value: u.id,
+                child: Text('${u.name}  (${u.factor} ${_baseUnitName(l.product)})'),
+              ),
+          ],
+          child: Container(
+            padding: const EdgeInsets.only(left: 10, right: 2, top: 3, bottom: 3),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_unitLabel(l),
+                    style: TextStyle(
+                        fontSize: 12, color: Colors.blue[900], fontWeight: FontWeight.w600)),
+                Icon(Icons.arrow_drop_down, size: 18, color: Colors.blue[900]),
+              ],
+            ),
+          ),
+        ),
+      );
+
+  Widget _levelBar() => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+        child: Row(
+          children: [
+            Text('${tr('Prices')}:  ',
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            Expanded(
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  for (final lv in kPriceLevels)
+                    ChoiceChip(
+                      label: Text(tr(priceLevelLabel(lv))),
+                      selected: _level == lv,
+                      visualDensity: VisualDensity.compact,
+                      onSelected: _saving ? null : (_) => setState(() => _level = lv),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
 
   @override
   void initState() {
@@ -118,8 +245,11 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
           id: '$receiptId-${i++}',
           productId: l.product.id,
           productTitle: l.product.title,
-          quantity: l.quantity,
-          total: l.subtotal,
+          quantity: l.baseQty,
+          total: _lineTotal(l),
+          unitName: l.unit?.name,
+          unitFactor: l.factor,
+          priceLevel: _level,
           timestamp: soldAt,
           soldBy: uid,
           orderNo: orderNo,
@@ -161,19 +291,32 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
       _usingCache = fromCache;
       _loading = false;
       // Re-bind cart lines to fresh product data (stock may have changed).
-      final byId = {for (final p in list) _key(p): p};
-      _cart.removeWhere((k, _) => !byId.containsKey(k));
-      _cart.forEach((k, line) => line.product = byId[k]!);
+      final byId = {for (final p in list) p.id: p};
+      _cart.removeWhere((k, l) {
+        final fresh = byId[l.product.id];
+        return fresh == null ||
+            (l.unit != null && !fresh.units.any((u) => u.id == l.unit!.id));
+      });
+      _cart.forEach((k, line) {
+        final fresh = byId[line.product.id]!;
+        line.product = fresh;
+        if (line.unit != null) {
+          line.unit = fresh.units.firstWhere((u) => u.id == line.unit!.id);
+        }
+      });
+      if (!_hasLevels) _level = 'retail';
     });
   }
 
   // ---------------------------------------------------------------- cart
 
-  /// Adds [qty] of [p] to the cart. Returns false (with a message) if stock is not enough.
-  bool _addToCart(Product p, {int qty = 1}) {
-    final line = _cart[_key(p)];
-    final wanted = (line?.quantity ?? 0) + qty;
-    if (wanted > p.stockQuantity) {
+  /// Adds [qty] of [p] (in [unit], or the base unit) to the cart. Returns false (with
+  /// a message) if stock is not enough. Stock is always counted in base units.
+  bool _addToCart(Product p, {int qty = 1, ProductUnit? unit}) {
+    final key = _lineKey(p, unit);
+    final line = _cart[key];
+    final wantedBase = _baseInCart(p) + qty * (unit?.factor ?? 1);
+    if (wantedBase > p.stockQuantity) {
       _showMessage(p.stockQuantity <= 0
           ? '${p.title} is out of stock'
           : 'Only ${p.stockQuantity} of ${p.title} in stock');
@@ -181,9 +324,9 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     }
     setState(() {
       if (line == null) {
-        _cart[_key(p)] = _CartLine(p, qty);
+        _cart[key] = _CartLine(p, unit, qty);
       } else {
-        line.quantity = wanted;
+        line.quantity += qty;
       }
     });
     return true;
@@ -192,10 +335,11 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
   void _changeQty(_CartLine line, int delta) {
     final q = line.quantity + delta;
     if (q <= 0) {
-      setState(() => _cart.remove(_key(line.product)));
+      setState(() => _cart.remove(_lineKey(line.product, line.unit)));
       return;
     }
-    if (q > line.product.stockQuantity) {
+    if (_baseInCart(line.product) - line.baseQty + q * line.factor >
+        line.product.stockQuantity) {
       _showMessage('Only ${line.product.stockQuantity} of ${line.product.title} in stock');
       return;
     }
@@ -225,8 +369,9 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     );
     if (result == null) return;
     if (result <= 0) {
-      setState(() => _cart.remove(_key(line.product)));
-    } else if (result > line.product.stockQuantity) {
+      setState(() => _cart.remove(_lineKey(line.product, line.unit)));
+    } else if (_baseInCart(line.product) - line.baseQty + result * line.factor >
+        line.product.stockQuantity) {
       _showMessage('Only ${line.product.stockQuantity} of ${line.product.title} in stock');
     } else {
       setState(() => line.quantity = result);
@@ -316,7 +461,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
       useSafeArea: true,
       builder: (_) => _BrowseSheet(
         products: _products,
-        qtyInCart: (p) => _cart[_key(p)]?.quantity ?? 0,
+        qtyInCart: _baseInCart,
         onAdd: (p) => _addToCart(p),
       ),
     );
@@ -330,7 +475,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
       return false;
     }
     for (final line in _cart.values) {
-      if (line.quantity > line.product.stockQuantity) {
+      if (_baseInCart(line.product) > line.product.stockQuantity) {
         _showMessage('Only ${line.product.stockQuantity} of ${line.product.title} in stock');
         return false;
       }
@@ -356,9 +501,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     if (!_validateCart()) return;
     setState(() => _saving = true);
 
-    final items = <Map<String, dynamic>>[
-      for (final l in _cart.values) {'product_id': l.product.id, 'quantity': l.quantity}
-    ];
+    final items = _cartItems();
     final receiptId = const Uuid().v4(); // lets the server ignore a repeated send
     final soldAt = DateTime.now();
     final total = _total;
@@ -440,11 +583,11 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
         await askCreditTerms(context, customerName: customer.name, total: total);
     if (terms == null || !mounted) return;
 
-    final items = <Map<String, dynamic>>[
-      for (final l in _cart.values) {'product_id': l.product.id, 'quantity': l.quantity}
-    ];
-    final lines = [for (final l in _cart.values) '${l.product.id}x${l.quantity}']..sort();
-    final key = '${customer.id}|${lines.join(',')}';
+    final items = _cartItems();
+    final lines = [
+      for (final l in _cart.values) '${l.product.id}:${l.unit?.id ?? ''}x${l.quantity}'
+    ]..sort();
+    final key = '${customer.id}|$_level|${lines.join(',')}';
     if (_creditKey != key) {
       _creditKey = key;
       _creditReceiptId = const Uuid().v4();
@@ -533,6 +676,10 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
       return;
     }
     if (!_validateCart()) return;
+    if (!_retailOnly) {
+      _showMessage(tr('Card / Online works with retail prices and single items only.'));
+      return;
+    }
     final phone = await _askPhone();
     if (phone == null || !mounted) return; // cancelled
     final paid = await Navigator.push<bool>(
@@ -680,7 +827,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
         return ListTile(
           enabled: !out,
           title: Text(p.title),
-          subtitle: Text('${categoryOf(p)}  •  ${tzs(p.price)}  •  '
+          subtitle: Text('${categoryOf(p)}  •  ${tzs(p.priceFor(_level))}  •  '
               '${out ? 'out of stock' : '${p.stockQuantity} in stock'}'),
           trailing: const Icon(Icons.add_circle_outline),
           onTap: () {
@@ -691,7 +838,14 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     );
   }
 
-  Widget _buildCart() {
+  Widget _buildCart() => Column(
+        children: [
+          if (_hasLevels) _levelBar(),
+          Expanded(child: _buildCartBody()),
+        ],
+      );
+
+  Widget _buildCartBody() {
     if (_cart.isEmpty) {
       return Center(
         child: Padding(
@@ -730,10 +884,11 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                       Text(line.product.title,
                           style: const TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(height: 2),
-                      Text('${tzs(line.product.price)} each',
+                      Text(_priceNote(line),
                           style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                      if (line.product.units.isNotEmpty) _unitMenu(line),
                       const SizedBox(height: 2),
-                      Text(tzs(line.subtotal),
+                      Text(tzs(_lineTotal(line)),
                           style: TextStyle(
                               color: Colors.blue[900], fontWeight: FontWeight.bold)),
                     ],
@@ -829,11 +984,17 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                         child: ElevatedButton.icon(
                           onPressed: _cart.isEmpty ? null : _lipaSale,
                           icon: const Icon(Icons.account_balance_wallet_outlined),
-                          label: Text(tr('Mobile money'),
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                          label: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(tr('Mobile money'),
+                                maxLines: 1,
+                                style: const TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.bold)),
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: kLipaColor,
                             foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8)),
                           ),
@@ -851,7 +1012,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                         child: SizedBox(
                           height: 44,
                           child: OutlinedButton.icon(
-                            onPressed: (_cart.isEmpty || !SyncService().online)
+                            onPressed: (_cart.isEmpty || !SyncService().online || !_retailOnly)
                                 ? null
                                 : _mobileSale,
                             icon: const Icon(Icons.credit_card),
