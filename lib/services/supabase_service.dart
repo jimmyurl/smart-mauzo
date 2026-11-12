@@ -147,6 +147,12 @@ class SupabaseService {
     });
   }
 
+  /// Inserts many products in ONE request (all or nothing). The product import
+  /// falls back to one row at a time when this throws, to find the bad rows.
+  Future<void> addProductsBulk(List<Map<String, dynamic>> rows) async {
+    await client.from(_products).insert(rows);
+  }
+
   Future<bool> updateProductStock(String productId, int newStockQuantity) async {
     try {
       await client
