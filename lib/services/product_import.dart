@@ -48,11 +48,11 @@ class ImportRow {
         'barcode': barcode,
         'description': description,
         'category': category,
-        'expiry_date': expiry == null
-            ? null
-            : '${expiry!.year.toString().padLeft(4, '0')}-'
-                '${expiry!.month.toString().padLeft(2, '0')}-'
-                '${expiry!.day.toString().padLeft(2, '0')}',
+        // Only sent when filled in, so an import still works before the expiry SQL is installed.
+        if (expiry != null)
+          'expiry_date': '${expiry!.year.toString().padLeft(4, '0')}-'
+              '${expiry!.month.toString().padLeft(2, '0')}-'
+              '${expiry!.day.toString().padLeft(2, '0')}',
         // Only sent when filled in, so an import still works before the units SQL is installed.
         if (priceWholesale != null) 'price_wholesale': priceWholesale,
         if (priceSpecial != null) 'price_special': priceSpecial,
