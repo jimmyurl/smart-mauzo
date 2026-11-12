@@ -1,3 +1,5 @@
+import 'product_unit.dart';
+
 class Product {
   final String id;
   final String title;
@@ -11,6 +13,16 @@ class Product {
   final String? category; // NEW
   final DateTime? expiryDate; // optional, date only
 
+  /// Optional prices for other kinds of customer (null = use the retail [price]).
+  final double? priceWholesale;
+  final double? priceSpecial;
+
+  /// What one item is called, e.g. "tablet" or "bag". Optional.
+  final String? baseUnit;
+
+  /// Bigger units (strip, box, tonne...). Stock is always counted in base units.
+  List<ProductUnit> units;
+
   Product({
     required this.id,
     required this.title,
@@ -23,7 +35,20 @@ class Product {
     required this.createdAt,
     this.category, // NEW
     this.expiryDate,
-  });
+    this.priceWholesale,
+    this.priceSpecial,
+    this.baseUnit,
+    List<ProductUnit>? units,
+  }) : units = units ?? <ProductUnit>[];
+
+  /// Price of ONE [unit] (null = the base unit) at a price [level]. Missing level
+  /// prices fall back to retail; the server uses the same rules.
+  double priceFor(String level, {ProductUnit? unit}) {
+    if (unit != null) return unit.priceFor(level, price);
+    if (level == 'wholesale') return priceWholesale ?? price;
+    if (level == 'special') return priceSpecial ?? price;
+    return price;
+  }
 
   /// Whole days from today until the expiry date (negative = already expired).
   /// Null when no expiry date is set.
@@ -49,6 +74,17 @@ class Product {
       expiryDate: json['expiry_date'] == null
           ? null
           : DateTime.tryParse('${json['expiry_date']}'),
+      priceWholesale: json['price_wholesale'] == null
+          ? null
+          : double.tryParse('${json['price_wholesale']}'),
+      priceSpecial: json['price_special'] == null
+          ? null
+          : double.tryParse('${json['price_special']}'),
+      baseUnit: json['unit_name'] as String?,
+      units: [
+        for (final u in (json['units'] as List? ?? const []))
+          ProductUnit.fromJson(Map<String, dynamic>.from(u as Map)),
+      ],
     );
   }
 
@@ -64,6 +100,10 @@ class Product {
       'stock_quantity': stockQuantity,
       'created_at': createdAt.toIso8601String(),
       'category': category, // NEW
+      'price_wholesale': priceWholesale,
+      'price_special': priceSpecial,
+      'unit_name': baseUnit,
+      'units': [for (final u in units) u.toJson()],
       'expiry_date': expiryDate == null
           ? null
           : '${expiryDate!.year.toString().padLeft(4, '0')}-'
