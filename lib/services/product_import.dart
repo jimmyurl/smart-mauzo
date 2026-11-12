@@ -21,6 +21,9 @@ class ImportRow {
   final String category;
   final String? description;
   final DateTime? expiry;
+  final double? priceWholesale;
+  final double? priceSpecial;
+  final String? baseUnit;
 
   const ImportRow({
     required this.line,
@@ -32,6 +35,9 @@ class ImportRow {
     required this.category,
     this.description,
     this.expiry,
+    this.priceWholesale,
+    this.priceSpecial,
+    this.baseUnit,
   });
 
   Map<String, dynamic> toInsert() => {
@@ -47,6 +53,10 @@ class ImportRow {
             : '${expiry!.year.toString().padLeft(4, '0')}-'
                 '${expiry!.month.toString().padLeft(2, '0')}-'
                 '${expiry!.day.toString().padLeft(2, '0')}',
+        // Only sent when filled in, so an import still works before the units SQL is installed.
+        if (priceWholesale != null) 'price_wholesale': priceWholesale,
+        if (priceSpecial != null) 'price_special': priceSpecial,
+        if (baseUnit != null) 'unit_name': baseUnit,
       };
 }
 
@@ -87,31 +97,36 @@ class ProductImport {
     'category': ['category', 'categoryname', 'group', 'department', 'aina', 'kundi'],
     'expiry': ['expiry', 'expirydate', 'expdate', 'exp', 'expires', 'tareheyakuisha', 'mudawakuisha'],
     'description': ['description', 'notes', 'note', 'maelezo'],
+    'wholesale': ['wholesaleprice', 'wholesale', 'beiyajumla', 'jumla'],
+    'special': ['specialprice', 'contractorprice', 'special', 'contractor', 'beimaalum', 'maalum'],
+    'unit': ['unit', 'baseunit', 'uom', 'kipimo', 'kizio'],
   };
 
   // ------------------------------------------------------------------ template
   /// A small example file (CSV) with a few rows that fit [type].
   static String templateCsv(BusinessType? type) {
+    // Name, Barcode, Buying, Selling, Wholesale, Special, Unit, Quantity, Category, Expiry
     final samples = <BusinessType, List<List<String>>>{
       BusinessType.pharmacy: [
-        ['Paracetamol 500mg (10 tablets)', '6001234500011', '300', '500', '120', 'Pain & fever', '2027-06-30'],
-        ['Amoxicillin 500mg (strip)', '', '900', '1500', '60', 'Antibiotics', '2027-03-31'],
+        ['Paracetamol 500mg', '6001234500011', '30', '50', '45', '', 'tablet', '1200', 'Pain & fever', '2027-06-30'],
+        ['Amoxicillin 500mg', '', '90', '150', '130', '', 'capsule', '600', 'Antibiotics', '2027-03-31'],
       ],
       BusinessType.supermarket: [
-        ['Soda 500ml', '5449000000996', '700', '1000', '48', 'Beverages', '2027-01-31'],
-        ['Rice 1kg', '', '2200', '2800', '30', 'Rice, flour & grains', ''],
+        ['Soda 500ml', '5449000000996', '700', '1000', '900', '', 'bottle', '48', 'Beverages', '2027-01-31'],
+        ['Rice 1kg', '', '2200', '2800', '2600', '', 'pack', '30', 'Rice, flour & grains', ''],
       ],
       BusinessType.hardware: [
-        ['Cement 50kg', '', '14500', '16000', '40', 'Cement & building', ''],
-        ['Nails 3 inch (1kg)', '', '3500', '4500', '25', 'Nails, screws & fasteners', ''],
+        ['Cement 50kg', '', '14500', '16000', '15500', '15000', 'bag', '40', 'Cement & building', ''],
+        ['Nail 3 inch', '', '10', '15', '12', '11', 'piece', '2500', 'Nails, screws & fasteners', ''],
       ],
       BusinessType.general: [
-        ['Sugar 1kg', '', '2600', '3200', '20', 'Food & drinks', ''],
-        ['Airtime voucher 1000', '', '950', '1000', '100', 'Phone & airtime', ''],
+        ['Sugar 1kg', '', '2600', '3200', '3000', '', 'pack', '20', 'Food & drinks', ''],
+        ['Airtime voucher 1000', '', '950', '1000', '', '', '', '100', 'Phone & airtime', ''],
       ],
     };
     final rows = <List<String>>[
-      ['Name', 'Barcode', 'Buying price', 'Selling price', 'Quantity', 'Category', 'Expiry date'],
+      ['Name', 'Barcode', 'Buying price', 'Selling price', 'Wholesale price', 'Special price',
+        'Unit', 'Quantity', 'Category', 'Expiry date'],
       ...(samples[type ?? BusinessType.general] ?? samples[BusinessType.general]!),
     ];
     String q(String f) => (f.contains(',') || f.contains('"')) ? '"${f.replaceAll('"', '""')}"' : f;
@@ -219,6 +234,26 @@ class ProductImport {
         }
       }
 
+      double? wholesale;
+      if (cell('wholesale').isNotEmpty) {
+        final w = _num(cell('wholesale'));
+        if (w == null || w <= 0 || w > 1e10) {
+          skipped.add(ImportIssue(line, 'Invalid wholesale price'));
+          continue;
+        }
+        wholesale = (w * 100).round() / 100;
+      }
+      double? special;
+      if (cell('special').isNotEmpty) {
+        final sp = _num(cell('special'));
+        if (sp == null || sp <= 0 || sp > 1e10) {
+          skipped.add(ImportIssue(line, 'Invalid special price'));
+          continue;
+        }
+        special = (sp * 100).round() / 100;
+      }
+      final unitText = cell('unit');
+
       var barcode = cell('barcode').replaceAll(RegExp(r'\s'), '');
       if (RegExp(r'^\d+\.0+$').hasMatch(barcode)) barcode = barcode.split('.').first;
 
@@ -255,6 +290,9 @@ class ProductImport {
         category: category.isEmpty ? 'Uncategorized' : category,
         description: description.isEmpty ? null : description,
         expiry: expiry,
+        priceWholesale: wholesale,
+        priceSpecial: special,
+        baseUnit: unitText.isEmpty ? null : (unitText.length > 30 ? unitText.substring(0, 30) : unitText),
       ));
     }
     return ImportParseResult(rows: rows, skipped: skipped);
