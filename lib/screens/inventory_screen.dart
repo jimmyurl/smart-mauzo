@@ -10,6 +10,7 @@ import '../utils/money.dart';
 import '../widgets/category_chips.dart';
 import '../widgets/category_field.dart';
 import 'add_product_screen.dart';
+import 'import_products_screen.dart';
 import 'restock_screen.dart';
 import 'stock_alerts_screen.dart';
 import '../services/app_language.dart';
@@ -216,6 +217,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
     }
   }
 
+  Future<void> _openImport() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const ImportProductsScreen()),
+    );
+    if (changed == true) _loadInventory();
+  }
+
   Future<void> _openAddProduct() async {
     if (_needsInternet()) return;
     await Navigator.push(
@@ -254,6 +263,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [
+          if (OfflineIdentity.isOwner && !_fromCache)
+            IconButton(
+              icon: const Icon(Icons.upload_file),
+              tooltip: tr('Import from Excel'),
+              onPressed: _openImport,
+            ),
           if (OfflineIdentity.isOwner)
             IconButton(
               icon: const Icon(Icons.notifications_active_outlined),
