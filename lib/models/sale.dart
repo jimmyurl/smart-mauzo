@@ -39,6 +39,13 @@ class Sale {
   /// the same number. Null only for a sale the server has not numbered yet.
   final int? orderNo;
 
+  /// For a sale in a pack unit (strip, box...): its name and how many base units
+  /// one holds. [quantity] is always in BASE units. [priceLevel] is retail,
+  /// wholesale or special.
+  final String? unitName;
+  final int unitFactor;
+  final String? priceLevel;
+
   Sale({
     required this.id,
     required this.productId,
@@ -52,7 +59,16 @@ class Sale {
     this.buyingPrice = 0,
     this.soldBy,
     this.orderNo,
+    this.unitName,
+    this.unitFactor = 1,
+    this.priceLevel,
   });
+
+  /// How many of the sold unit (2 strips = 2), or the plain quantity for the base unit.
+  int get unitQty => unitFactor > 1 ? quantity ~/ unitFactor : quantity;
+
+  /// "2 strip" for a pack unit, "3" for plain items.
+  String get qtyLabel => unitName == null ? '$quantity' : '$unitQty $unitName';
 
   /// Paid with mobile money straight to the shop's own number (no gateway).
   bool get isOwnTill => paymentMethod == 'lipa';
@@ -92,6 +108,9 @@ class Sale {
         buyingPrice: buyingPrice,
         soldBy: soldBy,
         orderNo: orderNo,
+        unitName: unitName,
+        unitFactor: unitFactor,
+        priceLevel: priceLevel,
       );
 
   Map<String, dynamic> toJson() {
@@ -108,6 +127,9 @@ class Sale {
       'buying_price': buyingPrice,
       'sold_by': soldBy,
       'order_no': orderNo,
+      'unit_name': unitName,
+      'unit_factor': unitFactor,
+      'price_level': priceLevel,
     };
   }
 
@@ -125,6 +147,9 @@ class Sale {
       buyingPrice: (json['buying_price'] as num?)?.toDouble() ?? 0,
       soldBy: json['sold_by'] as String?,
       orderNo: (json['order_no'] as num?)?.toInt(),
+      unitName: json['unit_name'] as String?,
+      unitFactor: (json['unit_factor'] as num?)?.toInt() ?? 1,
+      priceLevel: json['price_level'] as String?,
     );
   }
 }
