@@ -10,6 +10,7 @@ import '../utils/money.dart';
 import '../widgets/category_chips.dart';
 import '../widgets/category_field.dart';
 import 'add_product_screen.dart';
+import '../widgets/product_pricing_sheet.dart';
 import 'import_products_screen.dart';
 import 'restock_screen.dart';
 import 'stock_alerts_screen.dart';
@@ -213,6 +214,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
     if (saved == true) {
       _msg('Stock added', ok: true);
+      _loadInventory();
+    }
+  }
+
+  Future<void> _editPricing(Product product) async {
+    final saved = await showProductPricingSheet(context, product);
+    if (saved == true) {
+      _msg(tr('Saved'), ok: true);
       _loadInventory();
     }
   }
@@ -553,6 +562,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
             Text('Barcode: ${product.barcode.isEmpty ? '-' : product.barcode}'),
             Text('Buying price: ${tzs(product.buyingPrice)}'),
             Text('Selling price: ${tzs(product.price)}'),
+            if (product.priceWholesale != null)
+              Text('Wholesale price: ${tzs(product.priceWholesale!)}'),
+            if (product.priceSpecial != null)
+              Text('Special price: ${tzs(product.priceSpecial!)}'),
+            for (final u in product.units)
+              Text('${u.name}: ${u.factor} ${product.baseUnit ?? 'pcs'}  •  '
+                  '${tzs(u.priceFor('retail', product.price))}'),
             Text('Profit per item: ${tzs(product.price - product.buyingPrice)}'),
             Text('Stock: ${product.stockQuantity}'),
             Text('Expiry: ${product.expiryDate == null ? 'not set' : DateFormat('d MMM yyyy').format(product.expiryDate!)}'),
@@ -561,6 +577,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ],
         ),
         actions: [
+          if (OfflineIdentity.isOwner && !_fromCache)
+            TextButton(
+              child: Text(tr('Prices & units')),
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _editPricing(product);
+              },
+            ),
           TextButton(
             child: const Text('Add stock'),
             onPressed: () {

@@ -50,7 +50,7 @@ class ReceiptService {
     for (final l in order.lines) {
       b
         ..writeln(l.productTitle)
-        ..writeln('  ${l.quantity} x ${_unit(l.total, l.quantity)} = ${tzs(l.total)}');
+        ..writeln('  ${l.qtyLabel} x ${_unit(l.total, l.unitQty)} = ${tzs(l.total)}');
     }
     b
       ..writeln(line)
@@ -102,7 +102,7 @@ class ReceiptService {
                     pw.Row(
                       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                       children: [
-                        pw.Text('  ${l.quantity} x ${_unit(l.total, l.quantity)}',
+                        pw.Text('  ${l.qtyLabel} x ${_unit(l.total, l.unitQty)}',
                             style: const pw.TextStyle(fontSize: 9)),
                         pw.Text(tzs(l.total), style: const pw.TextStyle(fontSize: 10)),
                       ],
