@@ -87,13 +87,15 @@ class ImportOutcome {
 class ProductImport {
   // Header names that mean each field (compared in lower case, letters and digits only).
   static const Map<String, List<String>> _aliases = {
-    'name': ['name', 'productname', 'product', 'item', 'itemname', 'title', 'jina', 'bidhaa', 'majina'],
+    'name': ['name', 'productname', 'product', 'item', 'itemname', 'itemdescription',
+      'productdescription', 'particulars', 'title', 'jina', 'bidhaa', 'majina'],
     'barcode': ['barcode', 'code', 'sku', 'itemcode', 'productcode', 'msimbo', 'bar'],
     'buying': ['buyingprice', 'buyprice', 'cost', 'costprice', 'purchaseprice', 'unitcost',
       'buying', 'beiyakununua', 'beiyanunua'],
     'price': ['sellingprice', 'sellprice', 'saleprice', 'retailprice', 'unitprice', 'selling',
       'price', 'beiyakuuza', 'beiyauzaji', 'bei'],
-    'qty': ['quantity', 'qty', 'stock', 'stockquantity', 'instock', 'onhand', 'idadi', 'stoo'],
+    'qty': ['quantity', 'qty', 'stock', 'stockquantity', 'instock', 'onhand', 'idadi', 'stoo',
+      'bookbalanceqty', 'bookbalance', 'balance', 'qtyonhand', 'openingstock', 'openingqty'],
     'category': ['category', 'categoryname', 'group', 'department', 'aina', 'kundi'],
     'expiry': ['expiry', 'expirydate', 'expdate', 'exp', 'expires', 'tareheyakuisha', 'mudawakuisha'],
     'description': ['description', 'notes', 'note', 'maelezo'],
@@ -154,24 +156,31 @@ class ProductImport {
       return const ImportParseResult(fatal: 'Could not read this file. Is it a valid .xlsx or .csv?');
     }
 
-    // Header row = first row that has anything in it.
-    var h = grid.indexWhere((r) => r.any((c) => c.trim().isNotEmpty));
-    if (h < 0) return const ImportParseResult(fatal: 'The file is empty.');
-
-    final cols = <String, int>{};
-    final header = grid[h];
-    for (var i = 0; i < header.length; i++) {
-      final key = header[i].toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-      for (final e in _aliases.entries) {
-        if (!cols.containsKey(e.key) && e.value.contains(key)) {
-          cols[e.key] = i;
-          break;
-        }
+    // The header row is the first of the top rows that names at least two known columns
+    // (a title or logo above it is fine). Otherwise the first row that has anything in it.
+    var h = -1;
+    var cols = <String, int>{};
+    final scan = min(grid.length, 40);
+    for (var i = 0; i < scan; i++) {
+      final m = _headerMap(grid[i]);
+      if (m.containsKey('name') && m.length >= 2) {
+        h = i;
+        cols = m;
+        break;
       }
     }
-    if (!cols.containsKey('name') || !cols.containsKey('price')) {
+    if (h < 0) {
+      h = grid.indexWhere((r) => r.any((c) => c.trim().isNotEmpty));
+      if (h < 0) return const ImportParseResult(fatal: 'The file is empty.');
+      cols = _headerMap(grid[h]);
+    }
+    if (!cols.containsKey('name')) {
       return const ImportParseResult(
-          fatal: 'Could not find the Name and Selling price columns in the first row of the file.');
+          fatal: 'Could not find a Name column. The table needs a header row such as Name, Selling price, Quantity.');
+    }
+    if (!cols.containsKey('price')) {
+      return const ImportParseResult(
+          fatal: 'Could not find a Selling price column. Add one (and Buying price if you have it), then import again.');
     }
 
     final barcodesInShop = <String>{
@@ -338,6 +347,22 @@ class ProductImport {
   }
 
   // ------------------------------------------------------------------- helpers
+  /// Which column holds which field, judging by the header texts of [row].
+  static Map<String, int> _headerMap(List<String> row) {
+    final cols = <String, int>{};
+    for (var i = 0; i < row.length; i++) {
+      final key = row[i].toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      if (key.isEmpty) continue;
+      for (final e in _aliases.entries) {
+        if (!cols.containsKey(e.key) && e.value.contains(key)) {
+          cols[e.key] = i;
+          break;
+        }
+      }
+    }
+    return cols;
+  }
+
   /// "14,500", "TZS 14 500", "1.500,50", "1500.5" -> number. Null if it is not one.
   static double? _num(String input) {
     var t = input.trim().replaceAll(RegExp(r'[^0-9.,\-]'), '');
