@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/expense.dart';
+import '../models/product_unit.dart';
 import '../models/order.dart';
 import '../models/sale.dart';
 import '../services/expense_service.dart';
@@ -1351,7 +1352,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       fontSize: 30, fontWeight: FontWeight.bold, color: _navy)),
               const SizedBox(height: 16),
               const Divider(),
-              _detailRow('Quantity', '${sale.quantity}'),
+              _detailRow('Quantity',
+                  sale.unitName == null ? '${sale.quantity}' : '${sale.qtyLabel} (${sale.quantity})'),
+              if (sale.priceLevel != null && sale.priceLevel != 'retail')
+                _detailRow('Price level', tr(priceLevelLabel(sale.priceLevel!))),
               _detailRow('Selling price (each)', tzs(unitPrice)),
               if (hasCost) ...[
                 _detailRow('Buying price (each)', tzs(sale.buyingPrice)),
