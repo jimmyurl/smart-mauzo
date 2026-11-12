@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/product.dart';
+import '../models/product_unit.dart';
 import '../models/sale.dart';
 import 'offline_store.dart';
 import 'app_language.dart';
@@ -115,12 +116,64 @@ class SupabaseService {
       final response = await client.from(_products).select().order('title');
       final products =
           response.map<Product>((json) => Product.fromJson(json)).toList();
+      await _attachUnits(products);
       // Keep an offline copy fresh every time products load (not awaited).
       OfflineStore().saveProducts(products);
       return products;
     } catch (e) {
       debugPrint('Error fetching products: $e');
       throw friendlyError(e);
+    }
+  }
+
+  /// Fills in the pack units (strip, box...) of every product. If the units table
+  /// is not installed yet, products simply have none.
+  Future<void> _attachUnits(List<Product> products) async {
+    try {
+      final rows = await client.from('sm_product_units').select().order('factor');
+      final byProduct = <String, List<ProductUnit>>{};
+      for (final r in rows) {
+        final u = ProductUnit.fromJson(Map<String, dynamic>.from(r));
+        (byProduct[u.productId] ??= <ProductUnit>[]).add(u);
+      }
+      for (final p in products) {
+        p.units = byProduct[p.id] ?? <ProductUnit>[];
+      }
+    } catch (e) {
+      debugPrint('Error fetching product units: $e');
+    }
+  }
+
+  /// Owner only: name, retail / buying / wholesale / special prices and the base
+  /// unit name. Throws a [PostgrestException] if the server refuses.
+  Future<void> updateProductPricing(
+    String productId, {
+    required String title,
+    required double price,
+    required double buyingPrice,
+    double? priceWholesale,
+    double? priceSpecial,
+    String? baseUnit,
+  }) async {
+    await client.from(_products).update({
+      'title': title,
+      'price': price,
+      'buying_price': buyingPrice,
+      'price_wholesale': priceWholesale,
+      'price_special': priceSpecial,
+      'unit_name': (baseUnit == null || baseUnit.trim().isEmpty) ? null : baseUnit.trim(),
+    }).eq('id', productId);
+  }
+
+  /// Owner only: removes [removedIds], then saves [units] (new ones are added,
+  /// existing ones updated). Throws a [PostgrestException] (23505 = name used twice).
+  Future<void> saveProductUnits(
+      List<ProductUnit> units, List<String> removedIds) async {
+    for (final id in removedIds) {
+      await client.from('sm_product_units').delete().eq('id', id);
+    }
+    if (units.isNotEmpty) {
+      await client.from('sm_product_units').upsert([for (final u in units) u.toJson()]);
     }
   }
 
@@ -416,7 +469,7 @@ class SupabaseService {
       // limits them to the sales they made themselves.
       final columns = OfflineIdentity.isOwner
           ? '*'
-          : 'id,product_id,product_title,quantity,total,timestamp,payment_method,pay_provider,pay_ref,sold_by,order_no';
+          : 'id,product_id,product_title,quantity,total,timestamp,payment_method,pay_provider,pay_ref,sold_by,order_no,unit_name,unit_factor,price_level';
       final response =
           await client.from(_sales).select(columns).order('timestamp', ascending: false);
       final sales = response.map<Sale>((json) => Sale.fromJson(json)).toList();
