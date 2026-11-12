@@ -160,6 +160,8 @@ const Map<String, String> _sw = {
   'Last reminder': 'Kumbusho la mwisho',
   'No reminder sent yet': 'Bado hujatuma kumbusho',
   'Share...': 'Tuma...',
+  'Could not find a Name column. The table needs a header row such as Name, Selling price, Quantity.': 'Haikupata safu ya Jina. Jedwali linahitaji safu ya kichwa kama Jina, Bei ya kuuza, Idadi.',
+  'Could not find a Selling price column. Add one (and Buying price if you have it), then import again.': 'Haikupata safu ya Bei ya kuuza. Ongeza moja (na Bei ya kununua kama unayo), kisha ingiza tena.',
   'Retail': 'Rejareja',
   'Wholesale': 'Jumla',
   'Special': 'Maalum',
